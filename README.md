@@ -8,7 +8,7 @@ Run it inside any project directory with a rough feature idea:
 specr "add team billing with seat management"
 ```
 
-Claude starts in `Specr mode`, inspects the project, aligns on its understanding, interviews you to flesh out the feature, and writes the resulting spec to `.specr/spec-<timestamp>.md`.
+Claude starts in `Specr mode`, inspects the project, aligns on its understanding, interviews you to flesh out the feature, and writes the resulting spec to `.specr/spec-<timestamp>-<short-name>.md`.
 
 ## Requirements
 
@@ -33,9 +33,10 @@ specr "rough outline of the feature"
 
 That will:
 
-1. Create `.specr/spec-<timestamp>.md` in the current directory.
+1. Reserve a timestamped spec path under `.specr/`.
 2. Launch Claude Code with the Specr startup prompt.
 3. Keep the session focused on spec creation only.
+4. Have Claude create a single spec file named `.specr/spec-<timestamp>-<short-name>.md` once it understands the feature well enough to name it clearly.
 
 ## Notes
 
