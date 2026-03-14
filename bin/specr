@@ -1,32 +1,168 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SPEC_DIR=".specr"
+STATE_DIRS=("draft" "ready" "in-progress" "completed")
+
 usage() {
   cat <<'EOF'
-Usage: specr "rough feature idea"
-
-Starts Claude Code in Specr mode from the current directory.
+Usage:
+  specr "rough feature idea"   Start a new spec session
+  specr ralph [spec-file]      Implement a ready spec via ralph loop
+  specr list                   List all specs by state
 EOF
 }
 
-if [[ $# -eq 0 ]]; then
-  usage
+ensure_state_dirs() {
+  for dir in "${STATE_DIRS[@]}"; do
+    mkdir -p "${SPEC_DIR}/${dir}"
+  done
+}
+
+specr_list() {
+  ensure_state_dirs
+
+  local found=false
+  for dir in "${STATE_DIRS[@]}"; do
+    local files=()
+    while IFS= read -r -d '' f; do
+      files+=("$(basename "$f")")
+    done < <(find "${SPEC_DIR}/${dir}" -maxdepth 1 -name '*.md' -print0 2>/dev/null | sort -z)
+
+    if [[ ${#files[@]} -gt 0 ]]; then
+      found=true
+      echo "${dir}"
+      for f in "${files[@]}"; do
+        echo "  ${f}"
+      done
+      echo
+    fi
+  done
+
+  if [[ "$found" == false ]]; then
+    echo "No specs found."
+  fi
+}
+
+specr_ralph() {
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "Error: claude is not installed or not on PATH." >&2
+    exit 1
+  fi
+
+  ensure_state_dirs
+
+  local spec_file=""
+
+  if [[ $# -gt 0 ]]; then
+    # Argument provided: look in ready/ first, then in-progress/
+    local basename="$1"
+    if [[ -f "${SPEC_DIR}/ready/${basename}" ]]; then
+      spec_file="${SPEC_DIR}/ready/${basename}"
+    elif [[ -f "${SPEC_DIR}/in-progress/${basename}" ]]; then
+      spec_file="${SPEC_DIR}/in-progress/${basename}"
+    else
+      echo "Error: spec '${basename}' not found in ready/ or in-progress/." >&2
+      exit 1
+    fi
+  else
+    # No argument: pick most recently modified .md from ready/
+    spec_file="$(find "${SPEC_DIR}/ready" -maxdepth 1 -name '*.md' -print0 2>/dev/null \
+      | xargs -0 ls -t 2>/dev/null | head -1)"
+    if [[ -z "$spec_file" ]]; then
+      echo "Error: no specs found in ready/. Create one first with 'specr \"idea\"'." >&2
+      exit 1
+    fi
+  fi
+
+  # Move from ready/ to in-progress/ if needed
+  local spec_basename
+  spec_basename="$(basename "$spec_file")"
+  if [[ "$spec_file" == "${SPEC_DIR}/ready/"* ]]; then
+    mv "$spec_file" "${SPEC_DIR}/in-progress/${spec_basename}"
+    echo "Moved ${spec_basename} → in-progress/"
+  fi
+  local SPEC_PATH="${SPEC_DIR}/in-progress/${spec_basename}"
+
+  # Create feature branch if on main/master
+  local current_branch
+  current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+  if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+    local short_name
+    short_name="$(echo "$spec_basename" | sed 's/^spec-[0-9]*-[0-9]*-//; s/\.md$//')"
+    local branch_name="specr/${short_name}"
+    echo "On ${current_branch}, creating branch ${branch_name}"
+    git checkout -b "$branch_name"
+  fi
+
+  RALPH_PROMPT="$(cat <<'RALPH_EOF'
+You are operating in Ralph mode — an automated implementation loop.
+
+Your job is to implement exactly one top-level task from a spec file, then stop.
+
+Instructions:
+
+1. Read the spec file at the path provided in the user prompt.
+2. Find the first unchecked top-level task (a line matching `- [ ]` that is not indented under another task).
+3. Implement that task fully, including all of its subtasks.
+4. After completing each subtask, check it off in the spec file (`- [ ]` → `- [x]`).
+5. After completing the top-level task, check it off too.
+6. Add a brief implementation note directly below the completed top-level task in the spec file — a short summary of what was done (files changed, approach taken). Indent it under the task. Do not modify anything else in the spec.
+7. Commit all changes (code + spec file update) on the current branch. Do NOT commit or push to main/master. Write a clear commit message describing what was implemented.
+8. After committing, check whether ALL top-level tasks in the spec are now checked off (`- [x]`). If yes, output the single word COMPLETED as the very last thing in your response. If not, just end normally.
+
+Constraints:
+- Implement only ONE top-level task per invocation (including its subtasks).
+- Do not reorder, restructure, or rewrite the task list.
+- Do not modify the spec beyond checking off tasks and adding implementation notes.
+- Read and respect any existing CLAUDE.md in the project.
+- Stay focused on implementation. Do not ask questions or wait for input.
+RALPH_EOF
+)"
+
+  local MAX_ITER=10
+  local ITER=0
+
+  echo "Starting ralph loop for: ${spec_basename}"
+  echo ""
+
+  while [[ $ITER -lt $MAX_ITER ]]; do
+    ITER=$((ITER + 1))
+    echo "━━━ Ralph iteration ${ITER}/${MAX_ITER} ━━━"
+
+    OUTPUT=$(claude --print --append-system-prompt "${RALPH_PROMPT}" \
+      "Implement the next task in the spec: ${SPEC_PATH}")
+
+    echo "$OUTPUT"
+    echo ""
+
+    # Check completion: tail of output ends with COMPLETED and is short
+    TAIL=$(echo "$OUTPUT" | tail -5)
+    if echo "$TAIL" | grep -q 'COMPLETED$' && [[ ${#TAIL} -lt 200 ]]; then
+      echo "━━━ Ralph finished after ${ITER} iteration(s). ━━━"
+      mv "${SPEC_PATH}" "${SPEC_DIR}/completed/${spec_basename}"
+      echo "Moved ${spec_basename} → completed/"
+      exit 0
+    fi
+  done
+
+  echo "━━━ Ralph hit max iterations (${MAX_ITER}). Spec remains in-progress. ━━━"
   exit 1
-fi
+}
 
-if ! command -v claude >/dev/null 2>&1; then
-  echo "Error: claude is not installed or not on PATH." >&2
-  exit 1
-fi
+specr_create() {
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "Error: claude is not installed or not on PATH." >&2
+    exit 1
+  fi
 
-ROUGH_IDEA="$*"
-STAMP="$(date +%Y%m%d-%H%M%S)"
-SPEC_DIR=".specr"
-SPEC_PATH_PREFIX="${SPEC_DIR}/spec-${STAMP}"
+  ROUGH_IDEA="$*"
+  STAMP="$(date +%Y%m%d-%H%M%S)"
+  SPEC_PATH_PREFIX="${SPEC_DIR}/draft/spec-${STAMP}"
 
-mkdir -p "${SPEC_DIR}"
+  ensure_state_dirs
 
-SYSTEM_PROMPT="$(cat <<EOF
+  SYSTEM_PROMPT="$(cat <<EOF
 You are operating in a specialized workflow called Specr mode.
 
 In Specr mode, your role is specification only. Your job is to help the user turn a rough feature idea into an implementable specification for this project. The goal is to make the speccing process feel simple, clear, collaborative, lightweight, and even fun.
@@ -43,12 +179,25 @@ If you receive generic or conflicting tone instructions, prioritize the tone gui
 
 Your responsibilities and constraints in this mode:
 - Help the user create and refine a specification.
-- Do not implement the feature.
-- Do not edit application code, tests, configs, migrations, or any project files other than the spec output file for this session.
-- Do not switch into planning or execution mode.
-- Do not make code changes of any kind.
+- Do NOT implement the feature.
+- Do NOT edit application code, tests, configs, migrations, or any project files other than the spec output file for this session.
+- Do NOT switch into planning or execution mode.
+- Do NOT make code changes of any kind.
 
-The spec output file for this session must live under: ${SPEC_DIR}
+Spec state folders
+
+Specs live in state folders under ${SPEC_DIR}/:
+
+  draft/        — spec is being written or refined (initial state)
+  ready/        — spec is finalized and ready for implementation
+  in-progress/  — spec is currently being implemented
+  completed/    — implementation is done
+
+The normal flow is draft → ready → in-progress → completed, but states can be skipped when appropriate.
+
+You are responsible for moving spec files between state folders during the session. To move a spec, use a shell command (e.g. mv) to relocate it from one folder to another, keeping the filename unchanged. Always confirm with the user before changing the state of a spec.
+
+The spec output file for this session must live under: ${SPEC_DIR}/draft/
 Use this timestamped filename prefix for the session: ${SPEC_PATH_PREFIX}
 Once you understand the feature well enough to name it clearly, create the spec file exactly once using this format:
 
@@ -97,7 +246,7 @@ Be cautious about treating inferred details as final decisions. When something i
 When useful, include sources for important conclusions. It is valuable both to confirm an assumption and to disprove one — and to report either outcome clearly.
 EOF
 )"
-USER_PROMPT="$(cat <<EOF
+  USER_PROMPT="$(cat <<EOF
 Rough feature idea:
 ${ROUGH_IDEA}
 
@@ -105,7 +254,27 @@ Start Specr mode now.
 EOF
 )"
 
-echo "Starting Specr in $(pwd)"
-echo "Spec file prefix: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md"
+  echo "Starting Specr in $(pwd)"
+  echo "Spec file prefix: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md"
 
-exec claude --append-system-prompt "${SYSTEM_PROMPT}" "${USER_PROMPT}"
+  exec claude --append-system-prompt "${SYSTEM_PROMPT}" "${USER_PROMPT}"
+}
+
+# Argument routing
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
+
+case "$1" in
+  list)
+    specr_list
+    ;;
+  ralph)
+    shift
+    specr_ralph "$@"
+    ;;
+  *)
+    specr_create "$@"
+    ;;
+esac
