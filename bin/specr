@@ -134,7 +134,7 @@ RALPH_EOF
     ITER=$((ITER + 1))
     echo "━━━ Ralph iteration ${ITER}/${MAX_ITER} ━━━"
 
-    OUTPUT=$(claude --print --append-system-prompt "${RALPH_PROMPT}" \
+    OUTPUT=$(claude --print --model sonnet --append-system-prompt "${RALPH_PROMPT}" \
       "Implement the next task in the spec: ${SPEC_PATH}")
 
     echo "$OUTPUT"
