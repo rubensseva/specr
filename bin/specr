@@ -110,12 +110,16 @@ Instructions:
 6. Add a brief implementation note directly below the completed top-level task in the spec file — a short summary of what was done (files changed, approach taken). Indent it under the task. Do not modify anything else in the spec.
 7. Commit all changes (code + spec file update) on the current branch. Do NOT commit or push to main/master. Write a clear commit message describing what was implemented.
 8. After committing, check whether ALL top-level tasks in the spec are now checked off (`- [x]`). If yes, output the single word COMPLETED as the very last thing in your response. If not, just end normally.
+9. If you encounter a situation where **retrying cannot succeed**, **continuing risks data corruption**, or **critical user input is required before you can proceed**, output the single word INTERRUPTED as the very last thing in your response. Do not attempt to continue or retry. Examples of when to use INTERRUPTED:
+   - A required external dependency or service is missing and cannot be installed within the task.
+   - A task requires a decision or credential that only a human can provide.
+   - Continuing would overwrite or corrupt data in a way that cannot be undone.
+   - A fundamental assumption in the spec is incorrect and the task cannot be implemented as written.
 
 Constraints:
-- Implement only ONE top-level task per invocation (including its subtasks).
+- Implement only ONE top-level task (including its subtasks).
 - Do not reorder, restructure, or rewrite the task list.
 - Do not modify the spec beyond checking off tasks and adding implementation notes.
-- Read and respect any existing CLAUDE.md in the project.
 - Stay focused on implementation. Do not ask questions or wait for input.
 RALPH_EOF
 )"
