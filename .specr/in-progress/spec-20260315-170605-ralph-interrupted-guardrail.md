@@ -83,9 +83,10 @@ Exit code 2 is distinct so that calling scripts or CI can differentiate between 
   - [x] Add a new numbered instruction (after item 8) describing when to output `INTERRUPTED`
   - [x] Include concrete examples of valid interruption scenarios
   > **Implementation note:** Added instruction 9 to `RALPH_PROMPT` in `bin/specr` with INTERRUPTED signal guidance and four concrete examples of valid interruption scenarios.
-- [ ] Add INTERRUPTED detection logic to the ralph `while` loop in `bin/specr`
-  - [ ] Add `grep -q 'INTERRUPTED$'` check on `$TAIL` after the existing `COMPLETED` check
-  - [ ] Apply the same `${#TAIL} -lt 200` length guard
-  - [ ] Print a user-facing message indicating interruption
-  - [ ] Exit with code 2
-  - [ ] Ensure spec file is NOT moved (stays in `in-progress/`)
+- [x] Add INTERRUPTED detection logic to the ralph `while` loop in `bin/specr`
+  - [x] Add `grep -q 'INTERRUPTED$'` check on `$TAIL` after the existing `COMPLETED` check
+  - [x] Apply the same `${#TAIL} -lt 200` length guard
+  - [x] Print a user-facing message indicating interruption
+  - [x] Exit with code 2
+  - [x] Ensure spec file is NOT moved (stays in `in-progress/`)
+  > **Implementation note:** Added INTERRUPTED detection block in `bin/specr` after the COMPLETED check (line 152). Uses identical pattern: `grep -q 'INTERRUPTED$'` with `${#TAIL} -lt 200` guard. Prints interruption message and exits with code 2. Spec file is not moved.

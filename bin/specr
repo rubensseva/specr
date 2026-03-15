@@ -148,6 +148,12 @@ RALPH_EOF
       echo "Moved ${spec_basename} → completed/"
       exit 0
     fi
+
+    if echo "$TAIL" | grep -q 'INTERRUPTED$' && [[ ${#TAIL} -lt 200 ]]; then
+      echo ""
+      echo "━━━ Ralph INTERRUPTED after ${ITER} iteration(s). Review output above for details. ━━━"
+      exit 2
+    fi
   done
 
   echo "━━━ Ralph hit max iterations (${MAX_ITER}). Spec remains in-progress. ━━━"
