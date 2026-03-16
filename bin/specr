@@ -10,6 +10,7 @@ Usage:
   specr "rough feature idea"   Start a new spec session
   specr ralph [-n N] [spec-file] Implement a ready spec via ralph loop (default 20 iterations)
   specr preflight [spec-file]   Run a readiness check before implementing a spec
+  specr sync [--dry-run]       AI-verified sync of spec state folders
   specr list                   List all specs by state
 EOF
 }
@@ -243,6 +244,54 @@ RALPH_EOF
   exit 1
 }
 
+specr_sync() {
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "Error: claude is not installed or not on PATH." >&2
+    exit 1
+  fi
+
+  ensure_state_dirs
+
+  local dry_run=false
+  if [[ ${1:-} == "--dry-run" ]]; then
+    dry_run=true
+  fi
+
+  SYNC_PROMPT="$(cat <<'SYNC_EOF'
+You are a spec state auditor. Your job is to analyze spec files and determine whether each one is in the correct state folder based on the actual codebase.
+
+Instructions:
+
+1. Discover all .md spec files across these folders under .specr/: draft/, ready/, in-progress/, completed/, and the .specr/ root (legacy orphans).
+2. For each spec file found:
+   a. Read the spec content, especially the task list (lines matching `- [ ]` and `- [x]`).
+   b. Explore the codebase to verify whether the described changes actually exist — check for the files, functions, configs, or behaviors the spec describes.
+   c. Determine the correct state:
+      - draft — spec is incomplete, missing sections, or not yet actionable.
+      - ready — spec is complete and well-formed, but no implementation work has started in the codebase.
+      - in-progress — some but not all described work exists in the codebase.
+      - completed — all described work is fully implemented in the codebase.
+3. For each spec, report: current folder, recommended folder, and a one-line reason.
+4. Move files that need to change (using mv) to their correct state folder — unless the user prompt indicates this is a dry run, in which case only report what would change without moving anything.
+
+Output a clear summary showing each spec, its current state, recommended state, and reasoning.
+SYNC_EOF
+)"
+
+  local user_prompt
+  if [[ "$dry_run" == true ]]; then
+    user_prompt="Sync the spec files in .specr/ to their correct state folders. This is a dry run — report recommendations only, do NOT move any files."
+    echo "Running sync (dry run)..."
+  else
+    user_prompt="Sync the spec files in .specr/ to their correct state folders. Move any files that are in the wrong state folder."
+    echo "Running sync..."
+  fi
+  echo ""
+
+  claude --print --model sonnet --append-system-prompt "${SYNC_PROMPT}" \
+    "${user_prompt}"
+}
+
 specr_create() {
   if ! command -v claude >/dev/null 2>&1; then
     echo "Error: claude is not installed or not on PATH." >&2
@@ -367,6 +416,10 @@ case "$1" in
   preflight)
     shift
     specr_preflight "$@"
+    ;;
+  sync)
+    shift
+    specr_sync "$@"
     ;;
   ralph)
     shift
