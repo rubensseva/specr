@@ -7,11 +7,11 @@ STATE_DIRS=("draft" "ready" "in-progress" "completed")
 usage() {
   cat <<'EOF'
 Usage:
-  specr "rough feature idea"   Start a new spec session
-  specr ralph [-n N] [spec-file] Implement a ready spec via ralph loop (default 20 iterations)
-  specr preflight [spec-file]   Run a readiness check before implementing a spec
-  specr sync [--dry-run]       AI-verified sync of spec state folders
-  specr list                   List all specs by state
+  specr [--claude] "rough feature idea"  Start a new spec session (default: codex, --claude to use claude)
+  specr ralph [-n N] [spec-file]         Implement a ready spec via ralph loop (default 20 iterations)
+  specr preflight [spec-file]            Run a readiness check before implementing a spec
+  specr sync [--dry-run]                 AI-verified sync of spec state folders
+  specr list                             List all specs by state
 EOF
 }
 
@@ -298,8 +298,19 @@ SYNC_EOF
 }
 
 specr_create() {
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "Error: claude is not installed or not on PATH." >&2
+  local use_claude=false
+  if [[ ${1:-} == "--claude" ]]; then
+    use_claude=true
+    shift
+  fi
+
+  local spec_tool="codex"
+  if [[ "$use_claude" == true ]]; then
+    spec_tool="claude"
+  fi
+
+  if ! command -v "$spec_tool" >/dev/null 2>&1; then
+    echo "Error: ${spec_tool} is not installed or not on PATH." >&2
     exit 1
   fi
 
@@ -402,10 +413,14 @@ Start Specr mode now.
 EOF
 )"
 
-  echo "Starting Specr in $(pwd)"
+  echo "Starting Specr in $(pwd) (using ${spec_tool})"
   echo "Spec file prefix: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md"
 
-  exec claude --append-system-prompt "${SYSTEM_PROMPT}" "${USER_PROMPT}"
+  if [[ "$use_claude" == true ]]; then
+    exec claude --append-system-prompt "${SYSTEM_PROMPT}" "${USER_PROMPT}"
+  else
+    exec codex -c "developer_instructions=$(printf '%s' "${SYSTEM_PROMPT}")" --search "${USER_PROMPT}"
+  fi
 }
 
 # Argument routing
@@ -429,6 +444,9 @@ case "$1" in
   ralph)
     shift
     specr_ralph "$@"
+    ;;
+  --claude)
+    specr_create "$@"
     ;;
   *)
     specr_create "$@"
