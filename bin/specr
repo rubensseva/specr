@@ -8,7 +8,8 @@ usage() {
   cat <<'EOF'
 Usage:
   specr "rough feature idea"   Start a new spec session
-  specr ralph [spec-file]      Implement a ready spec via ralph loop
+  specr ralph [-n N] [spec-file] Implement a ready spec via ralph loop (default 20 iterations)
+  specr preflight [spec-file]   Run a readiness check before implementing a spec
   specr list                   List all specs by state
 EOF
 }
@@ -44,6 +45,82 @@ specr_list() {
   fi
 }
 
+specr_preflight() {
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "Error: claude is not installed or not on PATH." >&2
+    exit 1
+  fi
+
+  ensure_state_dirs
+
+  local spec_file=""
+
+  if [[ $# -gt 0 ]]; then
+    local basename="$1"
+    if [[ -f "${SPEC_DIR}/ready/${basename}" ]]; then
+      spec_file="${SPEC_DIR}/ready/${basename}"
+    elif [[ -f "${SPEC_DIR}/in-progress/${basename}" ]]; then
+      spec_file="${SPEC_DIR}/in-progress/${basename}"
+    else
+      echo "Error: spec '${basename}' not found in ready/ or in-progress/." >&2
+      exit 1
+    fi
+  else
+    spec_file="$(find "${SPEC_DIR}/ready" -maxdepth 1 -name '*.md' -print0 2>/dev/null \
+      | xargs -0 ls -t 2>/dev/null | head -1)"
+    if [[ -z "$spec_file" ]]; then
+      echo "Error: no specs found in ready/. Create one first with 'specr \"idea\"'." >&2
+      exit 1
+    fi
+  fi
+
+  local spec_basename
+  spec_basename="$(basename "$spec_file")"
+  local SPEC_PATH="$spec_file"
+
+  PREFLIGHT_PROMPT="$(cat <<'PREFLIGHT_EOF'
+You are performing a preflight readiness check for a spec that will be implemented by an automated loop called Ralph.
+
+Ralph's execution model:
+- Ralph implements one top-level task at a time from the spec's task list, then exits.
+- It runs in a loop using `claude --print --model sonnet` (non-interactive, no user input possible).
+- After each task, Ralph commits all changes on the current branch (never main/master).
+- Ralph checks off completed tasks in the spec file to track progress.
+
+Your job is to read the spec, analyze what Ralph would need to implement it, and produce a structured readiness report. Do NOT implement anything. Do NOT modify any files. This is a read-only analysis.
+
+Instructions:
+1. Read the spec file at the path provided in the user prompt.
+2. Analyze every task and subtask to determine what tools, permissions, shell commands, file access, git operations, and external dependencies would be needed.
+3. Verify your current environment by checking what you can actually do (e.g., run a test command, check git status, verify CLI tools are installed, read relevant config files).
+4. Produce a report with these sections:
+
+**Required** — Essential for implementation. It will fail or stall without these.
+- Permissions and tools (e.g., Bash, Edit, Write, file read access)
+- External CLIs or dependencies (e.g., npm, cargo, docker)
+- Environment requirements (e.g., environment variables, running services)
+
+**Recommended** — Not strictly blocking but would meaningfully improve quality or speed.
+- Additional tools or permissions that would help (e.g., WebSearch for API docs)
+- Nice-to-have dependencies or configurations
+
+**Environment Status** — Current state of the working environment.
+- Git status (clean working tree? correct branch?)
+- Relevant project state (dependencies installed? project builds?)
+
+**Issues** — Any problems found, with suggested fixes where possible.
+
+Be thorough but concise.
+PREFLIGHT_EOF
+)"
+
+  echo "Running preflight check for: ${spec_basename}"
+  echo ""
+
+  claude --print --model sonnet --append-system-prompt "${PREFLIGHT_PROMPT}" \
+    "Check implementation readiness for the spec: ${SPEC_PATH}"
+}
+
 specr_ralph() {
   if ! command -v claude >/dev/null 2>&1; then
     echo "Error: claude is not installed or not on PATH." >&2
@@ -51,6 +128,18 @@ specr_ralph() {
   fi
 
   ensure_state_dirs
+
+  local max_iter=20
+  # Parse -n flag for iteration count
+  if [[ ${1:-} == "-n" ]]; then
+    shift
+    if [[ $# -eq 0 || ! "$1" =~ ^[0-9]+$ ]]; then
+      echo "Error: -n requires a numeric argument." >&2
+      exit 1
+    fi
+    max_iter="$1"
+    shift
+  fi
 
   local spec_file=""
 
@@ -121,21 +210,29 @@ Constraints:
 - Do not reorder, restructure, or rewrite the task list.
 - Do not modify the spec beyond checking off tasks and adding implementation notes.
 - Stay focused on implementation. Do not ask questions or wait for input.
+- CRITICAL: Before exiting, you MUST update the spec file to reflect any progress made during this iteration. Every subtask or task you completed must be checked off, and an implementation note must be added. The spec file is the sole source of truth for progress across iterations — if you do not update it, your work will be repeated or lost. The only exception is if you made zero progress (e.g., the very first action failed).
 RALPH_EOF
 )"
 
-  local MAX_ITER=10
+  local MAX_ITER=$max_iter
   local ITER=0
 
-  echo "Starting ralph loop for: ${spec_basename}"
+  echo "Starting ralph loop for: ${spec_basename} (max ${MAX_ITER} iterations)"
   echo ""
 
   while [[ $ITER -lt $MAX_ITER ]]; do
     ITER=$((ITER + 1))
     echo "━━━ Ralph iteration ${ITER}/${MAX_ITER} ━━━"
 
+    local claude_exit=0
     OUTPUT=$(claude --print --model sonnet --append-system-prompt "${RALPH_PROMPT}" \
-      "Implement the next task in the spec: ${SPEC_PATH}")
+      "Implement the next task in the spec: ${SPEC_PATH}") || claude_exit=$?
+
+    if [[ $claude_exit -eq 130 || $claude_exit -eq 137 ]]; then
+      echo ""
+      echo "━━━ Ralph cancelled by user after ${ITER} iteration(s). Spec remains in-progress. ━━━"
+      exit 130
+    fi
 
     echo "$OUTPUT"
     echo ""
@@ -248,6 +345,7 @@ The task list must:
 - Be complete: if all tasks and subtasks are finished, the feature should be fully implemented.
 - Be concrete and implementation-oriented, not just high-level themes.
 - Reflect dependencies and ordering where that matters.
+- Be optimized for agent-driven implementation: use around 4–10 top-level tasks, each grouping related subtasks. Avoid splitting into many tiny standalone tasks or collapsing everything into 1–2 massive tasks. Each top-level task should represent a meaningful, independently committable unit of work. Scale the number of tasks to the spec — a small feature may only need 2–3, a large one may need up to 10.
 
 While developing the spec, consider how the feature affects end users, not just the technical implementation. When appropriate, think slightly beyond the most obvious implementation path and bring in useful product or UX considerations. If the work is primarily backend or infrastructure and broader user impact is not relevant, stay grounded in the technical context.
 
@@ -279,6 +377,10 @@ fi
 case "$1" in
   list)
     specr_list
+    ;;
+  preflight)
+    shift
+    specr_preflight "$@"
     ;;
   ralph)
     shift
