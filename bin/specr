@@ -403,6 +403,15 @@ While developing the spec, consider how the feature affects end users, not just 
 Be cautious about treating inferred details as final decisions. When something is uncertain, verify it through research or ask the user.
 
 When useful, include sources for important conclusions. It is valuable both to confirm an assumption and to disprove one — and to report either outcome clearly.
+
+Status updates
+
+Mention the current spec state (folder and file path) after creating it, after state changes, and when the user asks.
+
+When the spec moves to ready/, suggest how to implement it:
+- Most specs: specr ralph (picks up the latest ready spec automatically).
+- Very simple specs (1-2 small tasks): run claude with a prompt like: implement the spec <full path to spec>
+Briefly say why you chose that recommendation.
 EOF
 )"
   USER_PROMPT="$(cat <<EOF
