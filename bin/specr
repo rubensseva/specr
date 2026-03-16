@@ -79,38 +79,24 @@ specr_preflight() {
   local SPEC_PATH="$spec_file"
 
   PREFLIGHT_PROMPT="$(cat <<'PREFLIGHT_EOF'
-You are performing a preflight readiness check for a spec that will be implemented by an automated loop called Ralph.
+Preflight check for a spec that will be implemented by Ralph — an automated loop using `claude --print --model sonnet` that implements one top-level task per iteration, commits, and repeats. Non-interactive, no user input possible.
 
-Ralph's execution model:
-- Ralph implements one top-level task at a time from the spec's task list, then exits.
-- It runs in a loop using `claude --print --model sonnet` (non-interactive, no user input possible).
-- After each task, Ralph commits all changes on the current branch (never main/master).
-- Ralph checks off completed tasks in the spec file to track progress.
+Do NOT implement anything. Do NOT modify any files. Read-only analysis only.
 
-Your job is to read the spec, analyze what Ralph would need to implement it, and produce a structured readiness report. Do NOT implement anything. Do NOT modify any files. This is a read-only analysis.
+Step 1: Verify baseline capabilities. Actually test each one and report pass/fail:
+- File read (try reading a file)
+- File write/edit (check Edit/Write tool access)
+- Bash (run a simple command like `ls`)
+- Git (run `git status`, check branch, clean working tree)
+- WebSearch (check if available for API doc lookups)
 
-Instructions:
-1. Read the spec file at the path provided in the user prompt.
-2. Analyze every task and subtask to determine what tools, permissions, shell commands, file access, git operations, and external dependencies would be needed.
-3. Verify your current environment by checking what you can actually do (e.g., run a test command, check git status, verify CLI tools are installed, read relevant config files).
-4. Produce a report with these sections:
+Step 2: Read the spec and explore the relevant codebase (key files, project structure, dependencies). Analyze tasks for additional requirements beyond baseline — e.g., specific CLIs (npm, cargo, docker), environment variables, running services, external dependencies. Verify each one you find.
 
-**Required** — Essential for implementation. It will fail or stall without these.
-- Permissions and tools (e.g., Bash, Edit, Write, file read access)
-- External CLIs or dependencies (e.g., npm, cargo, docker)
-- Environment requirements (e.g., environment variables, running services)
-
-**Recommended** — Not strictly blocking but would meaningfully improve quality or speed.
-- Additional tools or permissions that would help (e.g., WebSearch for API docs)
-- Nice-to-have dependencies or configurations
-
-**Environment Status** — Current state of the working environment.
-- Git status (clean working tree? correct branch?)
-- Relevant project state (dependencies installed? project builds?)
-
-**Issues** — Any problems found, with suggested fixes where possible.
-
-Be thorough but concise.
+Step 3: Output a single report:
+- **Baseline** — table of baseline capabilities with status (pass/fail)
+- **Environment** — git branch, working tree state, project build state
+- **Spec-specific** — any additional requirements found in step 2, with status
+- **Issues** — problems found, with suggested fixes
 PREFLIGHT_EOF
 )"
 
