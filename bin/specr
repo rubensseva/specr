@@ -223,16 +223,16 @@ RALPH_EOF
     echo "$OUTPUT"
     echo ""
 
-    # Check completion: tail of output ends with COMPLETED and is short
-    TAIL=$(echo "$OUTPUT" | tail -5)
-    if echo "$TAIL" | grep -q 'COMPLETED$' && [[ ${#TAIL} -lt 200 ]]; then
+    # Check completion: last non-empty line of output is exactly COMPLETED
+    LAST_LINE=$(echo "$OUTPUT" | sed '/^[[:space:]]*$/d' | tail -1)
+    if [[ "$LAST_LINE" == "COMPLETED" ]]; then
       echo "━━━ Ralph finished after ${ITER} iteration(s). ━━━"
       mv "${SPEC_PATH}" "${SPEC_DIR}/completed/${spec_basename}"
       echo "Moved ${spec_basename} → completed/"
       exit 0
     fi
 
-    if echo "$TAIL" | grep -q 'INTERRUPTED$' && [[ ${#TAIL} -lt 200 ]]; then
+    if [[ "$LAST_LINE" == "INTERRUPTED" ]]; then
       echo ""
       echo "━━━ Ralph INTERRUPTED after ${ITER} iteration(s). Review output above for details. ━━━"
       exit 2
