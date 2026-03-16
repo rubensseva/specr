@@ -274,7 +274,12 @@ Instructions:
 3. For each spec, report: current folder, recommended folder, and a one-line reason.
 4. Move files that need to change (using mv) to their correct state folder — unless the user prompt indicates this is a dry run, in which case only report what would change without moving anything.
 
-Output a clear summary showing each spec, its current state, recommended state, and reasoning.
+Output format — use a simple list, one spec per entry. Do NOT use tables. Example:
+
+- spec-name.md: ready → completed (all tasks implemented)
+- other-spec.md: draft (no change)
+
+If any files were moved, end with a short "Moved N spec(s)" summary line.
 SYNC_EOF
 )"
 
