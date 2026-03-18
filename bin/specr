@@ -7,11 +7,12 @@ STATE_DIRS=("draft" "ready" "in-progress" "completed")
 usage() {
   cat <<'EOF'
 Usage:
-  specr [--claude] "rough feature idea"  Start a new spec session (default: codex, --claude to use claude)
-  specr ralph [-n N] [spec-file]         Implement a ready spec via ralph loop (default 20 iterations)
-  specr preflight [spec-file]            Run a readiness check before implementing a spec
-  specr sync [--dry-run]                 AI-verified sync of spec state folders
-  specr list                             List all specs by state
+  specr [--claude] "rough feature idea"           Start a new spec session (default: codex, --claude to use claude)
+  specr auto [-n N] [--model M] "feature idea"   Autonomous spec creation loop (no user interaction)
+  specr ralph [-n N] [spec-file]                 Implement a ready spec via ralph loop (default 20 iterations)
+  specr preflight [spec-file]                    Run a readiness check before implementing a spec
+  specr sync [--dry-run]                         AI-verified sync of spec state folders
+  specr list                                     List all specs by state
 EOF
 }
 
@@ -244,6 +245,250 @@ RALPH_EOF
   exit 1
 }
 
+specr_auto() {
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "Error: claude is not installed or not on PATH." >&2
+    exit 1
+  fi
+
+  local max_rounds=5
+  local model="sonnet"
+
+  # Parse flags
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -n)
+        shift
+        if [[ $# -eq 0 || ! "$1" =~ ^[0-9]+$ ]]; then
+          echo "Error: -n requires a numeric argument." >&2
+          exit 1
+        fi
+        max_rounds="$1"
+        shift
+        ;;
+      --model)
+        shift
+        if [[ $# -eq 0 ]]; then
+          echo "Error: --model requires a model argument." >&2
+          exit 1
+        fi
+        model="$1"
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  if [[ $# -eq 0 ]]; then
+    echo "Error: a rough feature idea is required." >&2
+    echo "Usage: specr auto [-n N] [--model MODEL] \"rough feature idea\"" >&2
+    exit 1
+  fi
+
+  local rough_idea="$*"
+  local STAMP
+  STAMP="$(date +%Y%m%d-%H%M%S)"
+  local SPEC_PATH_PREFIX="${SPEC_DIR}/draft/spec-${STAMP}"
+
+  ensure_state_dirs
+
+  AUTO_SPECCER_PROMPT="$(cat <<EOF
+You are one of two agents in an autonomous spec creation loop. You write and refine the spec; a reviewer agent evaluates it between rounds.
+
+Be direct and task-focused. No banter.
+
+Your responsibilities:
+- On the first invocation: research the codebase, then create a spec file. Name it exactly: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md (keep the suffix short, lowercase, hyphenated). Write the full spec to this file.
+- On subsequent invocations: read the existing spec file at the path provided, incorporate the reviewer's feedback, and update the spec in place.
+
+Make reasonable decisions when possible. Only flag genuine ambiguities — things that codebase research cannot resolve and that meaningfully affect the implementation. Default to moving forward.
+
+Do thorough codebase research yourself. The reviewer is a second opinion, not a replacement for your own investigation.
+
+If the input is broad or vague, pick a concrete, well-scoped focus area and commit to it. A focused, implementable spec is better than a sprawling one.
+
+Spec state folders
+
+Specs live in state folders under ${SPEC_DIR}/:
+
+  draft/        — spec is being written or refined (initial state)
+  ready/        — spec is finalized and ready for implementation
+  in-progress/  — spec is currently being implemented
+  completed/    — implementation is done
+
+Always create and update the spec under draft/. Do NOT move the file — the bash loop handles state transitions.
+
+Spec requirements
+
+The spec must be implementable and include:
+- What we are solving
+- Technical implementation (this should be the largest section by far)
+- Relevant findings about the current project
+- Constraints and assumptions
+- Acceptance criteria
+- Task list with subtasks
+
+The spec must be self-contained and written so that someone implementing it later can understand it without needing prior context.
+
+Task list requirements
+
+The task list must:
+- Use Markdown checklists in the form - [ ] so implementation progress can be tracked later.
+- Be complete: if all tasks and subtasks are finished, the feature should be fully implemented.
+- Be concrete and implementation-oriented, not just high-level themes.
+- Reflect dependencies and ordering where that matters.
+- Be optimized for agent-driven implementation: use around 4–10 top-level tasks, each grouping related subtasks. Scale the number of tasks to the spec — a small feature may only need 2–3, a large one may need up to 10.
+
+Output free-form text as you work — describe your reasoning, note open questions or uncertainties, state when you believe the spec is complete. Write naturally.
+EOF
+)"
+
+  AUTO_REVIEWER_PROMPT="$(cat <<'REVIEWER_EOF'
+You are a reviewer and researcher in an autonomous spec creation loop. You are strictly read-only — never edit, create, or move any files.
+
+Your dual role:
+1. Researcher: answer open questions from the speccer's output by investigating the codebase. Cite file paths and line numbers. Focus on facts.
+2. Quality gate: decide whether the spec is complete and ready for implementation.
+
+Steps each round:
+1. Read the speccer's output from this round (provided in the user prompt).
+2. Read the spec file at the path provided (if available). If no spec file exists yet, tell the speccer it must create one.
+3. Research the codebase to answer any open questions or verify technical claims in the spec.
+4. Evaluate the spec for completeness:
+   - All required sections present: What we are solving, Technical implementation, Relevant findings, Constraints and assumptions, Acceptance criteria, Task list
+   - Technical implementation is concrete, accurate, and implementable
+   - Task list is complete, uses - [ ] checkboxes, has 4–10 top-level tasks with subtasks
+   - Spec is self-contained (no context needed from this conversation)
+5. Evaluate the spec on its own terms — is it complete for the scope it chose? Do not expand scope. A spec that covers one area well is ready; one that is shallow is not.
+
+Decision:
+- If the spec is complete and meets all requirements: output the single word COMPLETED as the very last line of your response.
+- If the spec needs more work: provide your research findings and concrete feedback. Do NOT output COMPLETED.
+
+Do NOT modify any files. Do NOT move the spec file. You are read-only.
+REVIEWER_EOF
+)"
+
+  local MAX_ROUNDS=$max_rounds
+  local ROUND=0
+  local SPECCER_OUTPUT=""
+  local SPEC_PATH=""
+
+  echo "Starting autonomous spec for: \"${rough_idea}\""
+  echo "Spec file prefix: ${SPEC_PATH_PREFIX}-<name>.md"
+  echo ""
+
+  # Round 1: Initial spec creation
+  echo "━━━ Round 1/${MAX_ROUNDS}: Creating initial spec ━━━"
+  local claude_exit=0
+  SPECCER_OUTPUT=$(claude --print --model "$model" --append-system-prompt "${AUTO_SPECCER_PROMPT}" \
+    "Rough feature idea: ${rough_idea}
+
+Research the codebase and create the spec file at: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md") || claude_exit=$?
+
+  if [[ $claude_exit -eq 130 || $claude_exit -eq 137 ]]; then
+    echo ""
+    echo "━━━ Auto spec cancelled by user. Spec remains in draft (if created). ━━━"
+    exit 130
+  fi
+
+  echo "$SPECCER_OUTPUT"
+  echo ""
+
+  while [[ $ROUND -lt $MAX_ROUNDS ]]; do
+    ROUND=$((ROUND + 1))
+
+    # Discover spec file via glob
+    SPEC_PATH="$(ls ${SPEC_PATH_PREFIX}-*.md 2>/dev/null | head -1 || true)"
+
+    # Review phase
+    echo "━━━ Round ${ROUND}/${MAX_ROUNDS}: Reviewing ━━━"
+    local reviewer_exit=0
+    local REVIEWER_OUTPUT
+    local spec_context
+    if [[ -n "$SPEC_PATH" ]]; then
+      spec_context="Spec file path: ${SPEC_PATH}"
+    else
+      spec_context="No spec file found yet at prefix: ${SPEC_PATH_PREFIX}-*.md"
+    fi
+
+    REVIEWER_OUTPUT=$(claude --print --model "$model" --append-system-prompt "${AUTO_REVIEWER_PROMPT}" \
+      "Speccer output this round:
+${SPECCER_OUTPUT}
+
+${spec_context}
+
+Review the spec and provide feedback, or output COMPLETED if the spec is ready.") || reviewer_exit=$?
+
+    if [[ $reviewer_exit -eq 130 || $reviewer_exit -eq 137 ]]; then
+      echo ""
+      echo "━━━ Auto spec cancelled by user. Spec remains in draft (if created). ━━━"
+      exit 130
+    fi
+
+    echo "$REVIEWER_OUTPUT"
+    echo ""
+
+    # Check for COMPLETED
+    local LAST_LINE
+    LAST_LINE=$(echo "$REVIEWER_OUTPUT" | sed '/^[[:space:]]*$/d' | tail -1)
+    if [[ "$LAST_LINE" == "COMPLETED" ]]; then
+      # Rediscover spec path in case it was just created
+      SPEC_PATH="$(ls ${SPEC_PATH_PREFIX}-*.md 2>/dev/null | head -1 || true)"
+      if [[ -n "$SPEC_PATH" ]]; then
+        local spec_basename
+        spec_basename="$(basename "$SPEC_PATH")"
+        mv "$SPEC_PATH" "${SPEC_DIR}/ready/${spec_basename}"
+        echo "━━━ Spec complete after ${ROUND} round(s) ━━━"
+        echo "Moved ${spec_basename} → ready/"
+      else
+        echo "━━━ Spec complete after ${ROUND} round(s) ━━━"
+        echo "Warning: could not find spec file to move to ready/."
+      fi
+      exit 0
+    fi
+
+    # Check if we've hit max rounds before refining
+    if [[ $ROUND -ge $MAX_ROUNDS ]]; then
+      break
+    fi
+
+    # Refine phase
+    echo "━━━ Round $((ROUND + 1))/${MAX_ROUNDS}: Refining spec ━━━"
+    local refine_exit=0
+    # Rediscover spec path
+    SPEC_PATH="$(ls ${SPEC_PATH_PREFIX}-*.md 2>/dev/null | head -1 || true)"
+    local spec_path_msg
+    if [[ -n "$SPEC_PATH" ]]; then
+      spec_path_msg="Current spec file: ${SPEC_PATH}"
+    else
+      spec_path_msg="No spec file found yet. Create it at: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md"
+    fi
+
+    SPECCER_OUTPUT=$(claude --print --model "$model" --append-system-prompt "${AUTO_SPECCER_PROMPT}" \
+      "${spec_path_msg}
+
+Reviewer feedback:
+${REVIEWER_OUTPUT}
+
+Read the current spec file (if it exists), incorporate the feedback above, and update the spec.") || refine_exit=$?
+
+    if [[ $refine_exit -eq 130 || $refine_exit -eq 137 ]]; then
+      echo ""
+      echo "━━━ Auto spec cancelled by user. Spec remains in draft (if created). ━━━"
+      exit 130
+    fi
+
+    echo "$SPECCER_OUTPUT"
+    echo ""
+  done
+
+  echo "━━━ Hit max rounds (${MAX_ROUNDS}). Spec remains in draft/. ━━━"
+  exit 1
+}
+
 specr_sync() {
   if ! command -v claude >/dev/null 2>&1; then
     echo "Error: claude is not installed or not on PATH." >&2
@@ -435,6 +680,10 @@ if [[ $# -eq 0 ]]; then
 fi
 
 case "$1" in
+  auto)
+    shift
+    specr_auto "$@"
+    ;;
   list)
     specr_list
     ;;
