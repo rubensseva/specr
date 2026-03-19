@@ -26,7 +26,7 @@ Options:
 
 Other:
   specr auto [-n N] [--model M] "idea"   Autonomous spec creation (two-agent loop, no interaction)
-  specr preflight [spec-file]            Readiness check before implementation
+  specr preflight [spec-file]            Readiness check (generic capability test if no spec)
   specr sync [--dry-run]                 AI-verified sync of spec state folders
   specr update                           Update specr to the latest version
   specr --version                        Show version
@@ -111,15 +111,23 @@ specr_preflight() {
   require_cmd claude
   ensure_state_dirs
 
-  local spec_file
-  spec_file="$(resolve_spec_file "$@")"
-  local spec_basename
-  spec_basename="$(basename "$spec_file")"
+  # If a spec argument is given, or a spec exists in ready/, run spec-specific preflight.
+  # Otherwise, run a generic capability check.
+  local spec_file=""
+  if [[ $# -gt 0 ]]; then
+    spec_file="$(resolve_spec_file "$@")"
+  else
+    spec_file="$(newest_file "${SPEC_DIR}/ready" '*.md')"
+  fi
 
-  IFS= read -r -d '' PREFLIGHT_PROMPT <<'PREFLIGHT_EOF' || true
-Preflight check for a spec that will be implemented by Ralph — an automated loop using `claude --print --model sonnet` that implements one top-level task per iteration, commits, and repeats. Non-interactive, no user input possible.
+  if [[ -n "$spec_file" ]]; then
+    local spec_basename
+    spec_basename="$(basename "$spec_file")"
 
-Do NOT implement anything. Do NOT modify any files. Read-only analysis only.
+    IFS= read -r -d '' PREFLIGHT_PROMPT <<'PREFLIGHT_EOF' || true
+Preflight permission check for a spec that will be implemented by Ralph — an automated loop using `claude --print --model sonnet` that implements one top-level task per iteration, commits, and repeats. Non-interactive, no user input possible.
+
+Do NOT implement anything. Do NOT modify any files. Do NOT review or critique the spec content. Your only job is to verify that the tools and permissions needed to implement this spec are available.
 
 Step 1: Verify baseline capabilities. Actually test each one and report pass/fail:
 - File read (try reading a file)
@@ -128,22 +136,50 @@ Step 1: Verify baseline capabilities. Actually test each one and report pass/fai
 - Git (run `git status`, check branch, clean working tree)
 - WebSearch (check if available for API doc lookups)
 
-Step 2: Read the spec and explore the relevant codebase (key files, project structure, dependencies). Analyze tasks for additional requirements beyond baseline — e.g., specific CLIs (npm, cargo, docker), environment variables, running services, external dependencies. Verify each one you find.
+Step 2: Read the spec only to identify what tools and dependencies the implementation would require — e.g., specific CLIs (npm, cargo, docker), environment variables, running services, external packages. Do NOT summarize or evaluate the spec itself. Just extract the requirements and verify each one is available.
 
 Step 3: Output a single report:
 - **Baseline** — table of baseline capabilities with status (pass/fail)
-- **Environment** — git branch, working tree state, project build state
-- **Spec-specific** — any additional requirements found in step 2, with status
+- **Environment** — git branch, working tree state
+- **Spec requirements** — any additional tools or dependencies the spec needs, with status (available/missing)
 - **Issues** — problems found, with suggested fixes
 PREFLIGHT_EOF
 
-  echo "Running preflight check for: ${spec_basename}"
-  echo ""
+    echo "Running preflight check for: ${spec_basename}"
+    echo ""
 
-  claude --print --model sonnet \
-    --allowedTools "Read Bash Glob Grep WebSearch" \
-    --append-system-prompt "${PREFLIGHT_PROMPT}" \
-    "Check implementation readiness for the spec: ${spec_file}"
+    claude --print --model sonnet \
+      --allowedTools "Read Bash Glob Grep WebSearch" \
+      --append-system-prompt "${PREFLIGHT_PROMPT}" \
+      "Check implementation readiness for the spec: ${spec_file}"
+  else
+    IFS= read -r -d '' GENERIC_PREFLIGHT_PROMPT <<'GENERIC_PREFLIGHT_EOF' || true
+Generic preflight capability check for specr. No spec was provided, so you are testing that all the tools and permissions needed for a typical spec implementation are working.
+
+Run the following checks in order. Each check must pass before moving on. Clean up everything you create — leave the working tree exactly as you found it.
+
+Step 1 — File write: Create a file called `tmp_specr_preflight_test.txt` with some placeholder content.
+Step 2 — File edit: Edit that file to change its content.
+Step 3 — File read: Read the file back and confirm the edit took effect.
+Step 4 — Git stage: Run `git add tmp_specr_preflight_test.txt` to stage it.
+Step 5 — Git unstage: Run `git reset tmp_specr_preflight_test.txt` to unstage it.
+Step 6 — Cleanup: Delete the file with `rm tmp_specr_preflight_test.txt`.
+Step 7 — Git status: Run `git status` to confirm the working tree is clean (same as before).
+Step 8 — Web search: Do a web search for something trivial (e.g., "hello world") to confirm WebSearch works.
+
+Output a single report:
+- A table with each step, its status (pass/fail), and a short note.
+- If any step failed, include a **Issues** section with what went wrong and how to fix it.
+GENERIC_PREFLIGHT_EOF
+
+    echo "Running generic preflight capability check (no spec provided)"
+    echo ""
+
+    claude --print --model sonnet \
+      --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
+      --append-system-prompt "${GENERIC_PREFLIGHT_PROMPT}" \
+      "Run a generic preflight capability check for specr. Test file creation, editing, reading, git staging/unstaging, cleanup, and web search. Clean up after yourself — leave no trace."
+  fi
 }
 
 specr_ralph() {
