@@ -240,7 +240,7 @@ Instructions:
 4. After completing each subtask, check it off in the spec file (`- [ ]` → `- [x]`).
 5. After completing the top-level task, check it off too.
 6. Add a brief implementation note directly below the completed top-level task in the spec file — a short summary of what was done (files changed, approach taken). Indent it under the task. Do not modify anything else in the spec.
-7. Commit all changes (code + spec file update) on the current branch. Do NOT commit or push to main/master. Write a clear commit message describing what was implemented.
+7. Commit your code changes on the current branch. Do not commit or push to main/master. Write a clear commit message describing what was implemented. Do not stage or commit files under the .specr/ directory — leave them as untracked/unstaged. The user manages these separately, typically via .gitignore.
 8. After committing, check whether ALL top-level tasks in the spec are now checked off (`- [x]`). If yes, output the single word COMPLETED as the very last thing in your response. If not, just end normally.
 9. If you encounter a situation where **retrying cannot succeed**, **continuing risks data corruption**, or **critical user input is required before you can proceed**, output the single word INTERRUPTED as the very last thing in your response. Do not attempt to continue or retry. Examples of when to use INTERRUPTED:
    - A required external dependency or service is missing and cannot be installed within the task.
