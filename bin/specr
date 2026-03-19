@@ -43,6 +43,26 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "Error: $1 is not installed or not on PATH." >&2; exit 1; }
 }
 
+claude_text_error_reason() {
+  local output="${1:-}"
+  local normalized
+  normalized="$(printf '%s' "$output" | tr '[:upper:]' '[:lower:]')"
+
+  if printf '%s' "$normalized" | grep -Eiq \
+    "you're out of extra usage|reached (your )?usage limit|usage limits? apply|wait for (it|your usage limits?) to reset|message limit"; then
+    echo "usage limit"
+    return 0
+  fi
+
+  if printf '%s' "$normalized" | grep -Eiq \
+    "invalid_request_error|authentication_error|billing_error|permission_error|not_found_error|request_too_large|rate_limit_error|api_error|overloaded_error|temporarily overloaded|service unavailable|internal server error|network error|fetch failed|econnreset|timed out"; then
+    echo "service error"
+    return 0
+  fi
+
+  return 1
+}
+
 # Most recently modified file matching a name glob in a directory. Empty if none.
 newest_file() {
   local dir="$1" pattern="$2"
@@ -282,8 +302,21 @@ RALPH_EOF
       exit 130
     fi
 
+    if [[ $claude_exit -ne 0 ]]; then
+      [[ -n "$OUTPUT" ]] && echo "$OUTPUT"
+      [[ -n "$OUTPUT" ]] && echo ""
+      echo "━━━ Ralph stopped because Claude exited with status ${claude_exit}. Spec remains in-progress. ━━━"
+      exit "$claude_exit"
+    fi
+
     echo "$OUTPUT"
     echo ""
+
+    local claude_error_reason=""
+    if claude_error_reason="$(claude_text_error_reason "$OUTPUT")"; then
+      echo "━━━ Ralph stopped because Claude reported a ${claude_error_reason}. Spec remains in-progress. ━━━"
+      exit 3
+    fi
 
     # Check completion: last non-empty line of output is exactly COMPLETED
     LAST_LINE=$(echo "$OUTPUT" | sed '/^[[:space:]]*$/d' | tail -1)
