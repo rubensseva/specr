@@ -35,6 +35,18 @@ ensure_state_dirs() {
   done
 }
 
+# Find the most recently modified .md file matching a glob prefix.
+# Returns empty string if no match. Safe with special characters in paths.
+find_spec_by_prefix() {
+  local prefix="$1"
+  local dir
+  dir="$(dirname "$prefix")"
+  local base_glob
+  base_glob="$(basename "$prefix")"'-*.md'
+  find "$dir" -maxdepth 1 -name "$base_glob" -print0 2>/dev/null \
+    | xargs -0 ls -t 2>/dev/null | head -1 || true
+}
+
 specr_list() {
   ensure_state_dirs
 
@@ -71,13 +83,17 @@ specr_preflight() {
   local spec_file=""
 
   if [[ $# -gt 0 ]]; then
-    local basename="$1"
-    if [[ -f "${SPEC_DIR}/ready/${basename}" ]]; then
-      spec_file="${SPEC_DIR}/ready/${basename}"
-    elif [[ -f "${SPEC_DIR}/in-progress/${basename}" ]]; then
-      spec_file="${SPEC_DIR}/in-progress/${basename}"
+    local spec_name="$1"
+    if [[ "$spec_name" == */* ]]; then
+      echo "Error: spec name must not contain path separators." >&2
+      exit 1
+    fi
+    if [[ -f "${SPEC_DIR}/ready/${spec_name}" ]]; then
+      spec_file="${SPEC_DIR}/ready/${spec_name}"
+    elif [[ -f "${SPEC_DIR}/in-progress/${spec_name}" ]]; then
+      spec_file="${SPEC_DIR}/in-progress/${spec_name}"
     else
-      echo "Error: spec '${basename}' not found in ready/ or in-progress/." >&2
+      echo "Error: spec '${spec_name}' not found in ready/ or in-progress/." >&2
       exit 1
     fi
   else
@@ -145,13 +161,17 @@ specr_ralph() {
 
   if [[ $# -gt 0 ]]; then
     # Argument provided: look in ready/ first, then in-progress/
-    local basename="$1"
-    if [[ -f "${SPEC_DIR}/ready/${basename}" ]]; then
-      spec_file="${SPEC_DIR}/ready/${basename}"
-    elif [[ -f "${SPEC_DIR}/in-progress/${basename}" ]]; then
-      spec_file="${SPEC_DIR}/in-progress/${basename}"
+    local spec_name="$1"
+    if [[ "$spec_name" == */* ]]; then
+      echo "Error: spec name must not contain path separators." >&2
+      exit 1
+    fi
+    if [[ -f "${SPEC_DIR}/ready/${spec_name}" ]]; then
+      spec_file="${SPEC_DIR}/ready/${spec_name}"
+    elif [[ -f "${SPEC_DIR}/in-progress/${spec_name}" ]]; then
+      spec_file="${SPEC_DIR}/in-progress/${spec_name}"
     else
-      echo "Error: spec '${basename}' not found in ready/ or in-progress/." >&2
+      echo "Error: spec '${spec_name}' not found in ready/ or in-progress/." >&2
       exit 1
     fi
   else
@@ -167,11 +187,18 @@ specr_ralph() {
   # Move from ready/ to in-progress/ if needed
   local spec_basename
   spec_basename="$(basename "$spec_file")"
+  local moved_from_ready=false
   if [[ "$spec_file" == "${SPEC_DIR}/ready/"* ]]; then
     mv "$spec_file" "${SPEC_DIR}/in-progress/${spec_basename}"
+    moved_from_ready=true
     echo "Moved ${spec_basename} → in-progress/"
   fi
   local SPEC_PATH="${SPEC_DIR}/in-progress/${spec_basename}"
+
+  # If killed before any iteration completes, restore spec to ready/
+  if [[ "$moved_from_ready" == true ]]; then
+    trap 'mv "${SPEC_PATH}" "${SPEC_DIR}/ready/${spec_basename}" 2>/dev/null; echo ""; echo "Restored ${spec_basename} → ready/ (no work done)"' EXIT
+  fi
 
   # Create feature branch if on main/master
   local current_branch
@@ -224,6 +251,9 @@ RALPH_EOF
     ITER=$((ITER + 1))
     echo "━━━ Ralph iteration ${ITER}/${MAX_ITER} ━━━"
 
+    # After first iteration starts, work may have been done — don't restore to ready/
+    trap - EXIT
+
     local claude_exit=0
     OUTPUT=$(claude --print --model sonnet --append-system-prompt "${RALPH_PROMPT}" \
       "Implement the next task in the spec: ${SPEC_PATH}") || claude_exit=$?
@@ -253,6 +283,7 @@ RALPH_EOF
     fi
   done
 
+  trap - EXIT
   echo "━━━ Ralph hit max iterations (${MAX_ITER}). Spec remains in-progress. ━━━"
   exit 1
 }
@@ -384,7 +415,7 @@ Do NOT modify any files. Do NOT move the spec file. You are read-only.
 REVIEWER_EOF
 
   local MAX_ROUNDS=$max_rounds
-  local ROUND=0
+  local ROUND=1
   local SPECCER_OUTPUT=""
   local SPEC_PATH=""
 
@@ -393,7 +424,7 @@ REVIEWER_EOF
   echo ""
 
   # Round 1: Initial spec creation
-  echo "━━━ Round 1/${MAX_ROUNDS}: Creating initial spec ━━━"
+  echo "━━━ Round ${ROUND}/${MAX_ROUNDS}: Creating initial spec ━━━"
   local claude_exit=0
   SPECCER_OUTPUT=$(claude --print --model "$model" --append-system-prompt "${AUTO_SPECCER_PROMPT}" \
     "Rough feature idea: ${rough_idea}
@@ -413,7 +444,7 @@ Research the codebase and create the spec file at: ${SPEC_PATH_PREFIX}-<short-de
     ROUND=$((ROUND + 1))
 
     # Discover spec file via glob
-    SPEC_PATH="$(ls ${SPEC_PATH_PREFIX}-*.md 2>/dev/null | head -1 || true)"
+    SPEC_PATH="$(find_spec_by_prefix "$SPEC_PATH_PREFIX")"
 
     # Review phase
     echo "━━━ Round ${ROUND}/${MAX_ROUNDS}: Reviewing ━━━"
@@ -448,7 +479,7 @@ Review the spec and provide feedback, or output COMPLETED if the spec is ready."
     LAST_LINE=$(echo "$REVIEWER_OUTPUT" | sed '/^[[:space:]]*$/d' | tail -1)
     if [[ "$LAST_LINE" == "COMPLETED" ]]; then
       # Rediscover spec path in case it was just created
-      SPEC_PATH="$(ls ${SPEC_PATH_PREFIX}-*.md 2>/dev/null | head -1 || true)"
+      SPEC_PATH="$(find_spec_by_prefix "$SPEC_PATH_PREFIX")"
       if [[ -n "$SPEC_PATH" ]]; then
         local spec_basename
         spec_basename="$(basename "$SPEC_PATH")"
@@ -467,11 +498,11 @@ Review the spec and provide feedback, or output COMPLETED if the spec is ready."
       break
     fi
 
-    # Refine phase
-    echo "━━━ Round $((ROUND + 1))/${MAX_ROUNDS}: Refining spec ━━━"
+    # Refine phase (same round — reviewer gave feedback, speccer incorporates it)
+    echo "━━━ Round ${ROUND}/${MAX_ROUNDS}: Refining spec ━━━"
     local refine_exit=0
     # Rediscover spec path
-    SPEC_PATH="$(ls ${SPEC_PATH_PREFIX}-*.md 2>/dev/null | head -1 || true)"
+    SPEC_PATH="$(find_spec_by_prefix "$SPEC_PATH_PREFIX")"
     local spec_path_msg
     if [[ -n "$SPEC_PATH" ]]; then
       spec_path_msg="Current spec file: ${SPEC_PATH}"
@@ -570,9 +601,10 @@ specr_create() {
     exit 1
   fi
 
-  ROUGH_IDEA="$*"
+  local ROUGH_IDEA="$*"
+  local STAMP
   STAMP="$(date +%Y%m%d-%H%M%S)"
-  SPEC_PATH_PREFIX="${SPEC_DIR}/draft/spec-${STAMP}"
+  local SPEC_PATH_PREFIX="${SPEC_DIR}/draft/spec-${STAMP}"
 
   ensure_state_dirs
 
