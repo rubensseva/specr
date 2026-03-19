@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# NOTE: Heredoc assignments use `IFS= read -r -d '' VAR <<'EOF' || true` instead
+# of the more common `VAR="$(cat <<'EOF' ... EOF)"` pattern. This is because
+# macOS ships bash 3.2, which has a bug where quotes (e.g. apostrophes in
+# "reviewer's") inside heredocs embedded in "$(...)" cause parse errors.
+
 SPEC_DIR=".specr"
 STATE_DIRS=("draft" "ready" "in-progress" "completed")
 
@@ -80,7 +85,7 @@ specr_preflight() {
   spec_basename="$(basename "$spec_file")"
   local SPEC_PATH="$spec_file"
 
-  PREFLIGHT_PROMPT="$(cat <<'PREFLIGHT_EOF'
+  IFS= read -r -d '' PREFLIGHT_PROMPT <<'PREFLIGHT_EOF' || true
 Preflight check for a spec that will be implemented by Ralph — an automated loop using `claude --print --model sonnet` that implements one top-level task per iteration, commits, and repeats. Non-interactive, no user input possible.
 
 Do NOT implement anything. Do NOT modify any files. Read-only analysis only.
@@ -100,7 +105,6 @@ Step 3: Output a single report:
 - **Spec-specific** — any additional requirements found in step 2, with status
 - **Issues** — problems found, with suggested fixes
 PREFLIGHT_EOF
-)"
 
   echo "Running preflight check for: ${spec_basename}"
   echo ""
@@ -172,7 +176,7 @@ specr_ralph() {
     git checkout -b "$branch_name"
   fi
 
-  RALPH_PROMPT="$(cat <<'RALPH_EOF'
+  IFS= read -r -d '' RALPH_PROMPT <<'RALPH_EOF' || true
 You are operating in Ralph mode — an automated implementation loop.
 
 Your job is to implement exactly one top-level task from a spec file, then stop.
@@ -200,7 +204,6 @@ Constraints:
 - Stay focused on implementation. Do not ask questions or wait for input.
 - CRITICAL: Before exiting, you MUST update the spec file to reflect any progress made during this iteration. Every subtask or task you completed must be checked off, and an implementation note must be added. The spec file is the sole source of truth for progress across iterations — if you do not update it, your work will be repeated or lost. The only exception is if you made zero progress (e.g., the very first action failed).
 RALPH_EOF
-)"
 
   local MAX_ITER=$max_iter
   local ITER=0
@@ -294,13 +297,13 @@ specr_auto() {
 
   ensure_state_dirs
 
-  AUTO_SPECCER_PROMPT="$(cat <<EOF
+  IFS= read -r -d '' AUTO_SPECCER_PROMPT <<'SPECCER_EOF' || true
 You are one of two agents in an autonomous spec creation loop. You write and refine the spec; a reviewer agent evaluates it between rounds.
 
 Be direct and task-focused. No banter.
 
 Your responsibilities:
-- On the first invocation: research the codebase, then create a spec file. Name it exactly: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md (keep the suffix short, lowercase, hyphenated). Write the full spec to this file.
+- On the first invocation: research the codebase, then create a spec file. Name it exactly: __SPEC_PATH_PREFIX__-<short-descriptive-name>.md (keep the suffix short, lowercase, hyphenated). Write the full spec to this file.
 - On subsequent invocations: read the existing spec file at the path provided, incorporate the reviewer's feedback, and update the spec in place.
 
 Make reasonable decisions when possible. Only flag genuine ambiguities — things that codebase research cannot resolve and that meaningfully affect the implementation. Default to moving forward.
@@ -311,7 +314,7 @@ If the input is broad or vague, pick a concrete, well-scoped focus area and comm
 
 Spec state folders
 
-Specs live in state folders under ${SPEC_DIR}/:
+Specs live in state folders under __SPEC_DIR__/:
 
   draft/        — spec is being written or refined (initial state)
   ready/        — spec is finalized and ready for implementation
@@ -342,10 +345,11 @@ The task list must:
 - Be optimized for agent-driven implementation: use around 4–10 top-level tasks, each grouping related subtasks. Scale the number of tasks to the spec — a small feature may only need 2–3, a large one may need up to 10.
 
 Output free-form text as you work — describe your reasoning, note open questions or uncertainties, state when you believe the spec is complete. Write naturally.
-EOF
-)"
+SPECCER_EOF
+  AUTO_SPECCER_PROMPT="${AUTO_SPECCER_PROMPT//__SPEC_PATH_PREFIX__/$SPEC_PATH_PREFIX}"
+  AUTO_SPECCER_PROMPT="${AUTO_SPECCER_PROMPT//__SPEC_DIR__/$SPEC_DIR}"
 
-  AUTO_REVIEWER_PROMPT="$(cat <<'REVIEWER_EOF'
+  IFS= read -r -d '' AUTO_REVIEWER_PROMPT <<'REVIEWER_EOF' || true
 You are a reviewer and researcher in an autonomous spec creation loop. You are strictly read-only — never edit, create, or move any files.
 
 Your dual role:
@@ -369,7 +373,6 @@ Decision:
 
 Do NOT modify any files. Do NOT move the spec file. You are read-only.
 REVIEWER_EOF
-)"
 
   local MAX_ROUNDS=$max_rounds
   local ROUND=0
@@ -502,7 +505,7 @@ specr_sync() {
     dry_run=true
   fi
 
-  SYNC_PROMPT="$(cat <<'SYNC_EOF'
+  IFS= read -r -d '' SYNC_PROMPT <<'SYNC_EOF' || true
 You are a spec state auditor. Your job is to analyze spec files and determine whether each one is in the correct state folder based on the actual codebase.
 
 Instructions:
@@ -526,7 +529,6 @@ Output format — use a simple list, one spec per entry. Do NOT use tables. Exam
 
 If any files were moved, end with a short "Moved N spec(s)" summary line.
 SYNC_EOF
-)"
 
   local user_prompt
   if [[ "$dry_run" == true ]]; then
@@ -565,7 +567,7 @@ specr_create() {
 
   ensure_state_dirs
 
-  SYSTEM_PROMPT="$(cat <<EOF
+  IFS= read -r -d '' SYSTEM_PROMPT <<'CREATE_EOF' || true
 You are operating in a specialized workflow called Specr mode.
 
 In Specr mode, your role is specification only. Your job is to help the user turn a rough feature idea into an implementable specification for this project. The goal is to make the speccing process feel simple, clear, collaborative, lightweight, and even fun.
@@ -581,12 +583,12 @@ Do not let the chat sound like a design document, and do not let the spec sound 
 Your responsibilities and constraints in this mode:
 - Help the user create and refine a specification.
 - Do not implement the feature.
-- In general, do not edit application code, tests, configs, migrations, or any project files other than the spec output file for this session. If you are explicitly instructed by the user to make an exception to this rule, thats fine.  
+- In general, do not edit application code, tests, configs, migrations, or any project files other than the spec output file for this session. If you are explicitly instructed by the user to make an exception to this rule, thats fine.
 - Do not switch into planning or execution mode.
 
 Spec state folders
 
-Specs live in state folders under ${SPEC_DIR}/:
+Specs live in state folders under __SPEC_DIR__/:
 
   draft/        — spec is being written or refined (initial state)
   ready/        — spec is finalized and ready for implementation
@@ -597,11 +599,11 @@ The normal flow is draft → ready → in-progress → completed, but states can
 
 You are responsible for moving spec files between state folders during the session. To move a spec, use a shell command (e.g. mv) to relocate it from one folder to another, keeping the filename unchanged. Always confirm with the user before changing the state of a spec.
 
-The spec output file for this session must live under: ${SPEC_DIR}/draft/
-Use this timestamped filename prefix for the session: ${SPEC_PATH_PREFIX}
+The spec output file for this session must live under: __SPEC_DIR__/draft/
+Use this timestamped filename prefix for the session: __SPEC_PATH_PREFIX__
 Once you understand the feature well enough to name it clearly, create the spec file exactly once using this format:
 
-${SPEC_PATH_PREFIX}-<short-descriptive-name>.md
+__SPEC_PATH_PREFIX__-<short-descriptive-name>.md
 
 Keep the suffix short, specific, lowercase, and hyphenated.
 After creating the file, use that same path for the rest of the session. Do not rename it later.
@@ -653,15 +655,13 @@ Mention the current spec state (folder and file path) after creating it, after s
 When the spec moves to ready/, suggest how to implement it with a short and simple sentence:
 - Most specs: specr ralph (picks up the latest ready spec automatically).
 - Small and simple specs: run claude with a prompt like: implement the spec <full path to spec>.
-EOF
-)"
-  USER_PROMPT="$(cat <<EOF
-Rough feature idea:
+CREATE_EOF
+  SYSTEM_PROMPT="${SYSTEM_PROMPT//__SPEC_DIR__/$SPEC_DIR}"
+  SYSTEM_PROMPT="${SYSTEM_PROMPT//__SPEC_PATH_PREFIX__/$SPEC_PATH_PREFIX}"
+  USER_PROMPT="Rough feature idea:
 ${ROUGH_IDEA}
 
-Start Specr mode now.
-EOF
-)"
+Start Specr mode now."
 
   echo "Starting Specr in $(pwd) (using ${spec_tool})"
   echo "Spec file prefix: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md"
