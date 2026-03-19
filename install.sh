@@ -77,5 +77,8 @@ fi
 echo ""
 echo "Done. Run 'specr --help' to get started."
 echo ""
+echo "Tip: add .specr to your global gitignore so it's ignored in every project:"
+echo '     echo ".specr" >> "$(git config --global core.excludesfile || echo ~/.gitignore)" && git config --global core.excludesfile "$(git config --global core.excludesfile || echo ~/.gitignore)"'
+echo ""
 echo "Tip: before your first 'specr ralph', run 'specr preflight' in your project"
 echo "     to verify Claude has the tools and environment access it needs."
