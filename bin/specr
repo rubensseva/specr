@@ -35,16 +35,47 @@ ensure_state_dirs() {
   done
 }
 
-# Find the most recently modified .md file matching a glob prefix.
-# Returns empty string if no match. Safe with special characters in paths.
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || { echo "Error: $1 is not installed or not on PATH." >&2; exit 1; }
+}
+
+# Most recently modified file matching a name glob in a directory. Empty if none.
+newest_file() {
+  local dir="$1" pattern="$2"
+  find "$dir" -maxdepth 1 -name "$pattern" -print0 2>/dev/null \
+    | xargs -0 ls -t 2>/dev/null | head -1 || true
+}
+
 find_spec_by_prefix() {
   local prefix="$1"
-  local dir
-  dir="$(dirname "$prefix")"
-  local base_glob
-  base_glob="$(basename "$prefix")"'-*.md'
-  find "$dir" -maxdepth 1 -name "$base_glob" -print0 2>/dev/null \
-    | xargs -0 ls -t 2>/dev/null | head -1 || true
+  newest_file "$(dirname "$prefix")" "$(basename "$prefix")-*.md"
+}
+
+# Resolve a spec: by name (ready/ then in-progress/) or most recent in ready/.
+# Prints path to stdout. Exits on error.
+resolve_spec_file() {
+  if [[ $# -gt 0 ]]; then
+    if [[ "$1" == */* ]]; then
+      echo "Error: spec name must not contain path separators." >&2
+      exit 1
+    fi
+    if [[ -f "${SPEC_DIR}/ready/$1" ]]; then
+      echo "${SPEC_DIR}/ready/$1"
+    elif [[ -f "${SPEC_DIR}/in-progress/$1" ]]; then
+      echo "${SPEC_DIR}/in-progress/$1"
+    else
+      echo "Error: spec '$1' not found in ready/ or in-progress/." >&2
+      exit 1
+    fi
+  else
+    local result
+    result="$(newest_file "${SPEC_DIR}/ready" '*.md')"
+    if [[ -z "$result" ]]; then
+      echo "Error: no specs found in ready/. Create one first with 'specr \"idea\"'." >&2
+      exit 1
+    fi
+    echo "$result"
+  fi
 }
 
 specr_list() {
@@ -73,41 +104,13 @@ specr_list() {
 }
 
 specr_preflight() {
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "Error: claude is not installed or not on PATH." >&2
-    exit 1
-  fi
-
+  require_cmd claude
   ensure_state_dirs
 
-  local spec_file=""
-
-  if [[ $# -gt 0 ]]; then
-    local spec_name="$1"
-    if [[ "$spec_name" == */* ]]; then
-      echo "Error: spec name must not contain path separators." >&2
-      exit 1
-    fi
-    if [[ -f "${SPEC_DIR}/ready/${spec_name}" ]]; then
-      spec_file="${SPEC_DIR}/ready/${spec_name}"
-    elif [[ -f "${SPEC_DIR}/in-progress/${spec_name}" ]]; then
-      spec_file="${SPEC_DIR}/in-progress/${spec_name}"
-    else
-      echo "Error: spec '${spec_name}' not found in ready/ or in-progress/." >&2
-      exit 1
-    fi
-  else
-    spec_file="$(find "${SPEC_DIR}/ready" -maxdepth 1 -name '*.md' -print0 2>/dev/null \
-      | xargs -0 ls -t 2>/dev/null | head -1)"
-    if [[ -z "$spec_file" ]]; then
-      echo "Error: no specs found in ready/. Create one first with 'specr \"idea\"'." >&2
-      exit 1
-    fi
-  fi
-
+  local spec_file
+  spec_file="$(resolve_spec_file "$@")"
   local spec_basename
   spec_basename="$(basename "$spec_file")"
-  local SPEC_PATH="$spec_file"
 
   IFS= read -r -d '' PREFLIGHT_PROMPT <<'PREFLIGHT_EOF' || true
 Preflight check for a spec that will be implemented by Ralph — an automated loop using `claude --print --model sonnet` that implements one top-level task per iteration, commits, and repeats. Non-interactive, no user input possible.
@@ -134,55 +137,26 @@ PREFLIGHT_EOF
   echo ""
 
   claude --print --model sonnet --append-system-prompt "${PREFLIGHT_PROMPT}" \
-    "Check implementation readiness for the spec: ${SPEC_PATH}"
+    "Check implementation readiness for the spec: ${spec_file}"
 }
 
 specr_ralph() {
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "Error: claude is not installed or not on PATH." >&2
-    exit 1
-  fi
-
+  require_cmd claude
   ensure_state_dirs
 
   local max_iter=20
-  # Parse -n flag for iteration count
   if [[ ${1:-} == "-n" ]]; then
     shift
-    if [[ $# -eq 0 || ! "$1" =~ ^[0-9]+$ ]]; then
-      echo "Error: -n requires a numeric argument." >&2
+    if [[ $# -eq 0 || ! "$1" =~ ^[1-9][0-9]*$ ]]; then
+      echo "Error: -n requires a positive number." >&2
       exit 1
     fi
     max_iter="$1"
     shift
   fi
 
-  local spec_file=""
-
-  if [[ $# -gt 0 ]]; then
-    # Argument provided: look in ready/ first, then in-progress/
-    local spec_name="$1"
-    if [[ "$spec_name" == */* ]]; then
-      echo "Error: spec name must not contain path separators." >&2
-      exit 1
-    fi
-    if [[ -f "${SPEC_DIR}/ready/${spec_name}" ]]; then
-      spec_file="${SPEC_DIR}/ready/${spec_name}"
-    elif [[ -f "${SPEC_DIR}/in-progress/${spec_name}" ]]; then
-      spec_file="${SPEC_DIR}/in-progress/${spec_name}"
-    else
-      echo "Error: spec '${spec_name}' not found in ready/ or in-progress/." >&2
-      exit 1
-    fi
-  else
-    # No argument: pick most recently modified .md from ready/
-    spec_file="$(find "${SPEC_DIR}/ready" -maxdepth 1 -name '*.md' -print0 2>/dev/null \
-      | xargs -0 ls -t 2>/dev/null | head -1)"
-    if [[ -z "$spec_file" ]]; then
-      echo "Error: no specs found in ready/. Create one first with 'specr \"idea\"'." >&2
-      exit 1
-    fi
-  fi
+  local spec_file
+  spec_file="$(resolve_spec_file "$@")"
 
   # Move from ready/ to in-progress/ if needed
   local spec_basename
@@ -241,15 +215,14 @@ Constraints:
 - At the end of your response, briefly note any problems you encountered — permission denials, tool errors, retries, or anything that cost significant time or tokens — so the next iteration (or a human reviewer) is aware.
 RALPH_EOF
 
-  local MAX_ITER=$max_iter
   local ITER=0
 
-  echo "Starting ralph loop for: ${spec_basename} (max ${MAX_ITER} iterations)"
+  echo "Starting ralph loop for: ${spec_basename} (max ${max_iter} iterations)"
   echo ""
 
-  while [[ $ITER -lt $MAX_ITER ]]; do
+  while [[ $ITER -lt $max_iter ]]; do
     ITER=$((ITER + 1))
-    echo "━━━ Ralph iteration ${ITER}/${MAX_ITER} ━━━"
+    echo "━━━ Ralph iteration ${ITER}/${max_iter} ━━━"
 
     # After first iteration starts, work may have been done — don't restore to ready/
     trap - EXIT
@@ -283,16 +256,12 @@ RALPH_EOF
     fi
   done
 
-  trap - EXIT
-  echo "━━━ Ralph hit max iterations (${MAX_ITER}). Spec remains in-progress. ━━━"
+  echo "━━━ Ralph hit max iterations (${max_iter}). Spec remains in-progress. ━━━"
   exit 1
 }
 
 specr_auto() {
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "Error: claude is not installed or not on PATH." >&2
-    exit 1
-  fi
+  require_cmd claude
 
   local max_rounds=5
   local model="sonnet"
@@ -302,8 +271,8 @@ specr_auto() {
     case "$1" in
       -n)
         shift
-        if [[ $# -eq 0 || ! "$1" =~ ^[0-9]+$ ]]; then
-          echo "Error: -n requires a numeric argument." >&2
+        if [[ $# -eq 0 || ! "$1" =~ ^[1-9][0-9]*$ ]]; then
+          echo "Error: -n requires a positive number." >&2
           exit 1
         fi
         max_rounds="$1"
@@ -533,10 +502,7 @@ Read the current spec file (if it exists), incorporate the feedback above, and u
 }
 
 specr_sync() {
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "Error: claude is not installed or not on PATH." >&2
-    exit 1
-  fi
+  require_cmd claude
 
   ensure_state_dirs
 
@@ -596,10 +562,7 @@ specr_create() {
     spec_tool="claude"
   fi
 
-  if ! command -v "$spec_tool" >/dev/null 2>&1; then
-    echo "Error: ${spec_tool} is not installed or not on PATH." >&2
-    exit 1
-  fi
+  require_cmd "$spec_tool"
 
   local ROUGH_IDEA="$*"
   local STAMP
