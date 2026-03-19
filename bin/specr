@@ -11,13 +11,21 @@ STATE_DIRS=("draft" "ready" "in-progress" "completed")
 
 usage() {
   cat <<'EOF'
+specr — spec-driven feature development
+
 Usage:
-  specr [--claude] "rough feature idea"           Start a new spec session (default: codex, --claude to use claude)
-  specr auto [-n N] [--model M] "feature idea"   Autonomous spec creation loop (no user interaction)
-  specr ralph [-n N] [spec-file]                 Implement a ready spec via ralph loop (default 20 iterations)
-  specr preflight [spec-file]                    Run a readiness check before implementing a spec
-  specr sync [--dry-run]                         AI-verified sync of spec state folders
-  specr list                                     List all specs by state
+  specr "rough feature idea"         Create a spec interactively (Claude researches, interviews, writes)
+  specr list                         List all specs by lifecycle state
+  specr ralph [-n N] [spec-file]     Implement a ready spec — automated loop, one task at a time
+
+Options:
+  specr --claude "idea"              Use Claude instead of Codex for spec creation
+  specr ralph -n 10                  Set max iterations (default: 20)
+
+Other:
+  specr auto [-n N] [--model M] "idea"   Autonomous spec creation (two-agent loop, no interaction)
+  specr preflight [spec-file]            Readiness check before implementation
+  specr sync [--dry-run]                 AI-verified sync of spec state folders
 EOF
 }
 
@@ -598,7 +606,7 @@ Specs live in state folders under __SPEC_DIR__/:
 
 The normal flow is draft → ready → in-progress → completed, but states can be skipped when appropriate.
 
-You are responsible for moving spec files between state folders during the session. To move a spec, use a shell command (e.g. mv) to relocate it from one folder to another, keeping the filename unchanged. Always confirm with the user before changing the state of a spec.
+You are responsible for moving spec files between state folders during the session. To move a spec, use a shell command (e.g. mv) to relocate it from one folder to another, keeping the filename unchanged.
 
 The spec output file for this session must live under: __SPEC_DIR__/draft/
 Use this timestamped filename prefix for the session: __SPEC_PATH_PREFIX__
@@ -646,13 +654,18 @@ Be cautious about treating inferred details as final decisions. When something i
 
 When useful, include sources for important conclusions. It is valuable both to confirm an assumption and to disprove one — and to report either outcome clearly.
 
-Status updates
+Guiding the user toward ready
+
+A spec in draft/ is not yet actionable. Your job is to help the user get it to ready/ — that is the finish line for this session.
+
+Before a spec can move to ready, every open question must be resolved — either by researching yourself, or by asking the user. Do not leave ambiguities in the spec. If you can answer a question through research, do that instead of asking the user. Research means reading the codebase first and foremost, but also using web search or other tools when you need up-to-date docs, API behavior, or best practices. Only ask the user when the answer genuinely cannot be found through your own research.
+
+As long as there are unresolved questions or gaps, keep asking. When all questions are resolved and the spec is complete — all sections filled out, task list solid, acceptance criteria clear — move the spec to ready/ yourself. Do not ask for permission to move it. Just move it, then tell the user:
+- That the spec is ready.
+- How to implement it: "Run `specr ralph` to start implementation — it picks up the latest ready spec automatically."
+- For very small specs, mention they can also just run claude directly: `claude "implement the spec at <path>"`
 
 Mention the current spec state (folder and file path) after creating it, after state changes, and when the user asks.
-
-When the spec moves to ready/, suggest how to implement it with a short and simple sentence:
-- Most specs: specr ralph (picks up the latest ready spec automatically).
-- Small and simple specs: run claude with a prompt like: implement the spec <full path to spec>.
 CREATE_EOF
   SYSTEM_PROMPT="${SYSTEM_PROMPT//__SPEC_DIR__/$SPEC_DIR}"
   SYSTEM_PROMPT="${SYSTEM_PROMPT//__SPEC_PATH_PREFIX__/$SPEC_PATH_PREFIX}"

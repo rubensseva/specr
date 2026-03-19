@@ -1,94 +1,105 @@
 # specr
 
-`specr` is a minimal single-file launcher that starts Claude Code in a strict specification-only workflow.
+Spec-driven feature development for any codebase. Write the spec first, implement second.
 
-Run it inside any project directory with a rough feature idea:
-
-```bash
-specr "add team billing with seat management"
-```
-
-Claude starts in `Specr mode`, inspects the project, aligns on its understanding, interviews you to flesh out the feature, and writes the resulting spec to `.specr/draft/spec-<timestamp>-<short-name>.md`.
+`specr` launches Claude Code in a specification-only mode. You describe a rough feature idea, Claude researches the codebase, interviews you to flesh it out, and writes a structured spec. When the spec is ready, `specr ralph` implements it task by task in an automated loop.
 
 ## Requirements
 
 - macOS
-- `claude` installed and available on `PATH`
+- `claude` CLI installed and on `PATH`
 
 ## Install
 
 ```bash
-git clone https://github.com/your-org/specr.git ~/.specr && mkdir -p ~/.local/bin && ln -sf ~/.specr/bin/specr ~/.local/bin/specr
+git clone https://github.com/rubensaldanha/specr.git ~/.specr
+mkdir -p ~/.local/bin
+ln -sf ~/.specr/bin/specr ~/.local/bin/specr
 ```
 
 Make sure `~/.local/bin` is on your `PATH`.
 
-## Usage
-
-From the project you want to spec in:
+## Quick start
 
 ```bash
-specr "rough outline of the feature"
+cd your-project
+
+# 1. Create a spec — Claude researches the codebase and interviews you
+specr "add team billing with seat management"
+
+# 2. Review what you have
+specr list
+
+# 3. Implement the spec — automated loop, one task at a time
+specr ralph
 ```
 
-That will:
+## Commands
 
-1. Create state directories under `.specr/` (if they don't exist).
-2. Launch Claude Code with the Specr startup prompt.
-3. Keep the session focused on spec creation only.
-4. Have Claude create a single spec file named `.specr/draft/spec-<timestamp>-<short-name>.md` once it understands the feature well enough to name it clearly.
+### `specr "rough feature idea"`
 
-### Implement a spec (ralph loop)
+Starts an interactive spec session. Claude researches the codebase, asks clarifying questions, and writes a spec to `.specr/draft/`. When you're both happy with it, Claude moves the spec to `.specr/ready/` — at which point it's ready for implementation.
 
-```bash
-specr ralph                    # implements the most recent ready spec
-specr ralph spec-20260314-*.md # implements a specific spec
-```
+Use `--claude` to use Claude directly (default is Codex).
 
-This runs the ralph loop — a `while` loop that repeatedly invokes Claude Code in non-interactive mode (`--print`), one task at a time, with a fresh context window each iteration. State persists through the filesystem and git between iterations.
+### `specr list`
+
+Shows all specs grouped by lifecycle state (draft, ready, in-progress, completed). Empty states are omitted.
+
+### `specr ralph [-n N] [spec-file]`
+
+Implements a spec. Picks the most recent spec from `ready/`, or accepts a specific filename.
+
+Ralph is an automated loop — it invokes Claude in non-interactive mode (`--print`), one top-level task per iteration, with a fresh context window each time. State persists through the spec file (markdown checkboxes) and git commits.
 
 The loop:
 1. Moves the spec from `ready/` to `in-progress/`.
 2. Creates a feature branch if on main/master.
-3. Each iteration: Claude reads the spec, implements the next unchecked task, checks it off, adds a brief implementation note, and commits.
-4. When all tasks are done, the spec moves to `completed/`.
-5. Stops after 10 iterations if not complete (re-run `specr ralph` to resume).
+3. Each iteration: reads the spec, implements the next unchecked task, checks it off, adds a brief implementation note, and commits.
+4. When all tasks are done, moves the spec to `completed/`.
 
-### List specs
+Use `-n` to set the max number of iterations (default 20).
 
-```bash
-specr list
-```
+### Other commands
 
-Shows all specs grouped by lifecycle state:
-
-```
-draft
-  spec-20260314-223952-spec-state-folders.md
-
-in-progress
-  spec-20260312-140000-billing-seats.md
-
-completed
-  spec-20260301-091500-dark-mode.md
-```
-
-Empty states are omitted from the output.
+| Command | Description |
+|---|---|
+| `specr auto [-n N] [--model M] "idea"` | Autonomous spec creation — two-agent loop (writer + reviewer), no user interaction. Experimental. |
+| `specr preflight [spec-file]` | Read-only readiness check before running ralph. Tests tool access, analyzes the spec for blockers. |
+| `specr sync [--dry-run]` | AI-verified sync — reads all specs, checks the codebase, and moves specs to their correct state folder. |
 
 ## Spec lifecycle
 
 Specs move through four state folders under `.specr/`:
 
+```
+draft/  →  ready/  →  in-progress/  →  completed/
+```
+
 | Folder | Meaning |
 |---|---|
-| `draft/` | Spec is being written or refined (initial state) |
-| `ready/` | Spec is finalized and ready for implementation |
-| `in-progress/` | Spec is currently being implemented |
-| `completed/` | Implementation is done |
+| `draft/` | Spec is being written or refined |
+| `ready/` | Finalized and ready for implementation |
+| `in-progress/` | Currently being implemented by ralph |
+| `completed/` | All tasks done |
 
-The agent manages state transitions during a session by moving spec files between folders.
+During an interactive session, Claude manages state transitions (with your confirmation). During `specr ralph`, the loop handles transitions automatically.
+
+## How specs are structured
+
+Specs are markdown files with these sections:
+
+- **What we are solving** — the problem and goal
+- **Technical implementation** — the bulk of the spec; concrete implementation details
+- **Relevant findings** — what was discovered about the current codebase
+- **Constraints and assumptions**
+- **Acceptance criteria** — observable, testable conditions
+- **Task list** — markdown checklists (`- [ ]`) with 4-10 top-level tasks and subtasks
+
+The task list drives implementation: ralph checks off tasks as it completes them and adds brief notes about what was done.
 
 ## Notes
 
-- The full Specr prompt is embedded directly in `bin/specr`.
-- Existing specs in `.specr/` root are not migrated automatically.
+- The entire tool is a single bash script at `bin/specr` — all prompts are embedded directly in it.
+- Ralph uses Sonnet by default for non-interactive commands.
+- Specs are named `spec-<YYYYMMDD>-<HHMMSS>-<short-name>.md`.
