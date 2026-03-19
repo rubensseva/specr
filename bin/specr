@@ -6,7 +6,9 @@ set -euo pipefail
 # macOS ships bash 3.2, which has a bug where quotes (e.g. apostrophes in
 # "reviewer's") inside heredocs embedded in "$(...)" cause parse errors.
 
+VERSION="0.1.0"
 SPEC_DIR=".specr"
+INSTALL_DIR="${HOME}/.specr-cli"
 STATE_DIRS=("draft" "ready" "in-progress" "completed")
 
 usage() {
@@ -26,6 +28,8 @@ Other:
   specr auto [-n N] [--model M] "idea"   Autonomous spec creation (two-agent loop, no interaction)
   specr preflight [spec-file]            Readiness check before implementation
   specr sync [--dry-run]                 AI-verified sync of spec state folders
+  specr update                           Update specr to the latest version
+  specr --version                        Show version
 EOF
 }
 
@@ -679,6 +683,17 @@ Start Specr mode now."
   fi
 }
 
+specr_update() {
+  if [[ ! -d "$INSTALL_DIR/.git" ]]; then
+    echo "Error: specr install directory not found at ${INSTALL_DIR}" >&2
+    echo "If you installed specr elsewhere, cd there and run: git pull" >&2
+    exit 1
+  fi
+  echo "Updating specr..."
+  git -C "$INSTALL_DIR" pull --ff-only
+  echo "Updated to $(git -C "$INSTALL_DIR" log -1 --format='%h %s')"
+}
+
 # Argument routing
 if [[ $# -eq 0 ]]; then
   usage
@@ -704,6 +719,13 @@ case "$1" in
   ralph)
     shift
     specr_ralph "$@"
+    ;;
+  update)
+    specr_update
+    ;;
+  -v|--version)
+    echo "specr ${VERSION}"
+    exit 0
     ;;
   -h|--help)
     usage

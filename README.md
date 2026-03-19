@@ -12,12 +12,26 @@ Spec-driven feature development for any codebase. Write the spec first, implemen
 ## Install
 
 ```bash
-git clone https://github.com/rubensaldanha/specr.git ~/.specr
-mkdir -p ~/.local/bin
-ln -sf ~/.specr/bin/specr ~/.local/bin/specr
+curl -fsSL https://raw.githubusercontent.com/rubensaldanha/specr/main/install.sh | bash
 ```
 
-Make sure `~/.local/bin` is on your `PATH`.
+The installer clones to `~/.specr-cli`, symlinks the binary to `~/.local/bin`, and offers to add it to your `PATH` if needed.
+
+Or manually:
+
+```bash
+git clone https://github.com/rubensaldanha/specr.git ~/.specr-cli
+mkdir -p ~/.local/bin
+ln -sf ~/.specr-cli/bin/specr ~/.local/bin/specr
+```
+
+If `~/.local/bin` is not on your PATH, add this to your `~/.zshrc` (or `~/.bashrc`):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+To update: `specr update`
 
 ## Quick start
 
@@ -67,6 +81,8 @@ Use `-n` to set the max number of iterations (default 20).
 | `specr auto [-n N] [--model M] "idea"` | Autonomous spec creation — two-agent loop (writer + reviewer), no user interaction. Experimental. |
 | `specr preflight [spec-file]` | Read-only readiness check before running ralph. Tests tool access, analyzes the spec for blockers. |
 | `specr sync [--dry-run]` | AI-verified sync — reads all specs, checks the codebase, and moves specs to their correct state folder. |
+| `specr update` | Update specr to the latest version. |
+| `specr --version` | Show version. |
 
 ## Spec lifecycle
 
@@ -100,6 +116,7 @@ The task list drives implementation: ralph checks off tasks as it completes them
 
 ## Notes
 
+- The tool installs to `~/.specr-cli` (distinct from the per-project `.specr/` spec directory).
 - The entire tool is a single bash script at `bin/specr` — all prompts are embedded directly in it.
 - Ralph uses Sonnet by default for non-interactive commands.
 - Specs are named `spec-<YYYYMMDD>-<HHMMSS>-<short-name>.md`.
