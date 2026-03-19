@@ -710,6 +710,10 @@ case "$1" in
     shift
     specr_ralph "$@"
     ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
   --claude)
     specr_create "$@"
     ;;
