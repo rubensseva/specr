@@ -76,3 +76,6 @@ fi
 
 echo ""
 echo "Done. Run 'specr --help' to get started."
+echo ""
+echo "Tip: before your first 'specr ralph', run 'specr preflight' in your project"
+echo "     to verify Claude has the tools and environment access it needs."

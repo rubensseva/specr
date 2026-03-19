@@ -140,7 +140,9 @@ PREFLIGHT_EOF
   echo "Running preflight check for: ${spec_basename}"
   echo ""
 
-  claude --print --model sonnet --append-system-prompt "${PREFLIGHT_PROMPT}" \
+  claude --print --model sonnet \
+    --allowedTools "Read Bash Glob Grep WebSearch" \
+    --append-system-prompt "${PREFLIGHT_PROMPT}" \
     "Check implementation readiness for the spec: ${spec_file}"
 }
 
@@ -232,7 +234,10 @@ RALPH_EOF
     trap - EXIT
 
     local claude_exit=0
-    OUTPUT=$(claude --print --model sonnet --append-system-prompt "${RALPH_PROMPT}" \
+    OUTPUT=$(claude --print --model sonnet \
+      --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
+      --disallowedTools "Bash(git push *)" \
+      --append-system-prompt "${RALPH_PROMPT}" \
       "Implement the next task in the spec: ${SPEC_PATH}") || claude_exit=$?
 
     if [[ $claude_exit -eq 130 || $claude_exit -eq 137 ]]; then
@@ -399,7 +404,10 @@ REVIEWER_EOF
   # Round 1: Initial spec creation
   echo "━━━ Round ${ROUND}/${MAX_ROUNDS}: Creating initial spec ━━━"
   local claude_exit=0
-  SPECCER_OUTPUT=$(claude --print --model "$model" --append-system-prompt "${AUTO_SPECCER_PROMPT}" \
+  SPECCER_OUTPUT=$(claude --print --model "$model" \
+    --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
+    --disallowedTools "Bash(git push *)" \
+    --append-system-prompt "${AUTO_SPECCER_PROMPT}" \
     "Rough feature idea: ${rough_idea}
 
 Research the codebase and create the spec file at: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md") || claude_exit=$?
@@ -430,7 +438,9 @@ Research the codebase and create the spec file at: ${SPEC_PATH_PREFIX}-<short-de
       spec_context="No spec file found yet at prefix: ${SPEC_PATH_PREFIX}-*.md"
     fi
 
-    REVIEWER_OUTPUT=$(claude --print --model "$model" --append-system-prompt "${AUTO_REVIEWER_PROMPT}" \
+    REVIEWER_OUTPUT=$(claude --print --model "$model" \
+      --allowedTools "Read Glob Grep WebSearch" \
+      --append-system-prompt "${AUTO_REVIEWER_PROMPT}" \
       "Speccer output this round:
 ${SPECCER_OUTPUT}
 
@@ -483,7 +493,10 @@ Review the spec and provide feedback, or output COMPLETED if the spec is ready."
       spec_path_msg="No spec file found yet. Create it at: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md"
     fi
 
-    SPECCER_OUTPUT=$(claude --print --model "$model" --append-system-prompt "${AUTO_SPECCER_PROMPT}" \
+    SPECCER_OUTPUT=$(claude --print --model "$model" \
+      --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
+      --disallowedTools "Bash(git push *)" \
+      --append-system-prompt "${AUTO_SPECCER_PROMPT}" \
       "${spec_path_msg}
 
 Reviewer feedback:
@@ -550,7 +563,10 @@ SYNC_EOF
   fi
   echo ""
 
-  claude --print --model sonnet --append-system-prompt "${SYNC_PROMPT}" \
+  claude --print --model sonnet \
+    --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
+    --disallowedTools "Bash(git push *)" \
+    --append-system-prompt "${SYNC_PROMPT}" \
     "${user_prompt}"
 }
 

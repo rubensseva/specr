@@ -44,7 +44,10 @@ specr "add team billing with seat management"
 # 2. Review what you have
 specr list
 
-# 3. Implement the spec — automated loop, one task at a time
+# 3. Run a readiness check (recommended before first run)
+specr preflight
+
+# 4. Implement the spec — automated loop, one task at a time
 specr ralph
 ```
 
