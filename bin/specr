@@ -203,6 +203,7 @@ Constraints:
 - Do not modify the spec beyond checking off tasks and adding implementation notes.
 - Stay focused on implementation. Do not ask questions or wait for input.
 - CRITICAL: Before exiting, you MUST update the spec file to reflect any progress made during this iteration. Every subtask or task you completed must be checked off, and an implementation note must be added. The spec file is the sole source of truth for progress across iterations — if you do not update it, your work will be repeated or lost. The only exception is if you made zero progress (e.g., the very first action failed).
+- At the end of your response, briefly note any problems you encountered — permission denials, tool errors, retries, or anything that cost significant time or tokens — so the next iteration (or a human reviewer) is aware.
 RALPH_EOF
 
   local MAX_ITER=$max_iter
@@ -612,14 +613,11 @@ You were started from within the target project directory.
 
 Workflow
 
-Initially, after first message from user:
-- Do lightweight preliminary research to understand the issue.
-- Once you understand the feature well enough to name it clearly, create the spec file using the exact format above.
+Start by doing some lightweight research — read relevant code first and foremost, but also use web search or other tools if you need up-to-date docs or external context. The goal is to ask informed questions instead of wasting time on things you could have looked up.
 
-Then for the rest of the conversaion:
-- Have an engaging discussion with the user.
-- Ask clarifying questions to flesh out the feature and improve the spec.
-- As conclusions begin to solidify, you are encouraged to do deeper research in the codebase and, when useful, consult external sources to verify or disprove assumptions with high confidence. For example, read relevant package source code or use web search to confirm current API behavior mentioned in the spec.
+Then have a real conversation with the user. This is the core of the process: ask about their goals, constraints, and preferences. Challenge assumptions, explore trade-offs, dig into the why and the what if. Make sure you understand the problem and the user's intent before writing anything down — but once you do, go ahead and create the spec file using the exact format above.
+
+As conclusions solidify, do deeper research in the codebase and consult external sources when useful to verify or disprove assumptions with high confidence. For example, read relevant package source code or use web search to confirm current API behavior mentioned in the spec.
 
 Spec requirements
 
