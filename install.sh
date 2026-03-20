@@ -3,7 +3,7 @@ set -euo pipefail
 
 INSTALL_DIR="${HOME}/.specr-cli"
 BIN_DIR="${HOME}/.local/bin"
-REPO_URL="https://github.com/rubensaldanha/specr.git"
+REPO_URL="https://github.com/rubensseva/specr.git"
 
 info()  { printf '  %s\n' "$*"; }
 ok()    { printf '  ✓ %s\n' "$*"; }
