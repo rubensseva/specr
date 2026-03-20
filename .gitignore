@@ -1,1 +1,9 @@
-.specr
+# Ignore everything
+*
+
+# Allow tracked files
+!.gitignore
+!README.md
+!bin/
+!bin/specr
+!install.sh
