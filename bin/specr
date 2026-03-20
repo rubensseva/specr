@@ -747,7 +747,7 @@ Before a spec can move to ready, every open question must be resolved — either
 As long as there are unresolved questions or gaps, keep asking. When all questions are resolved and the spec is complete — all sections filled out, task list solid, acceptance criteria clear — move the spec to ready/ yourself. Do not ask for permission to move it. Just move it, then tell the user:
 - That the spec is ready.
 - How to implement it: "Run `specr ralph` to start implementation — it picks up the latest ready spec automatically."
-- For very small specs, mention they can also just run claude directly: `claude "implement the spec at <path>"`
+- Only for small specs (1 or 2 main tasks), mention they can also just run claude directly: `claude "implement the spec at <path>"`. If there are 3 or more main tasks, do NOT suggest one-shotting — default to recommending `specr ralph`.
 
 Mention the current spec state (folder and file path) after creating it, after state changes, and when the user asks.
 CREATE_EOF
