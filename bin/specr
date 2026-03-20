@@ -430,6 +430,7 @@ The task list must:
 - Be concrete and implementation-oriented, not just high-level themes.
 - Reflect dependencies and ordering where that matters.
 - Be optimized for agent-driven implementation: group related subtasks under meaningful top-level tasks, where each top-level task represents an independently committable unit of work. There is no single right answer for task count — it depends entirely on the scope. A small feature might have 3 top-level tasks, a large one might have 20 or 30 or more. Those numbers are only examples, not targets. The only rule is that the list must be "ralph-able": correct, complete, and well-organized into logical top-level groups with clear subtasks.
+- Keep the focus on implementation. Tests and docs belong as subtasks under the implementation they relate to — not as standalone top-level tasks. Group them, keep them meaningful, and don't add more than necessary unless told otherwise.
 
 Output free-form text as you work — describe your reasoning, note open questions or uncertainties, state when you believe the spec is complete. Write naturally.
 SPECCER_EOF
@@ -733,7 +734,8 @@ The task list must:
 - Be complete: if all tasks and subtasks are finished, the feature should be fully implemented.
 - Be concrete and implementation-oriented, not just high-level themes.
 - Reflect dependencies and ordering where that matters.
-- Be optimized for agent-driven implementation: group related subtasks under meaningful top-level tasks, where each top-level task represents an independently committable unit of work. Avoid splitting into many tiny standalone tasks or collapsing everything into 1–2 massive tasks. There is no single right answer for task count — it depends entirely on the scope. A small feature might have 3 top-level tasks, a large one might have 20 or 30 or more. Those numbers are only examples, not targets. The only rule is that the list must be "ralph-able": correct, complete, and well-organized into logical top-level groups with clear subtasks. A large task list for a genuinely large feature is fine; an over-padded task list for a simple feature is not.
+- Be optimized for agent-driven implementation: group subtasks under meaningful top-level tasks, where each top-level task is an independently committable unit of work. Task count should match the scope — don't pad a small feature or under-split a large one. The list must be correct, complete, and well-organized into logical groups with clear subtasks.
+- Keep the focus on implementation. Tests and docs belong as subtasks under the implementation they relate to — not as standalone top-level tasks. Group them, keep them meaningful, and don't add more than necessary unless told otherwise.
 
 While developing the spec, consider how the feature affects end users, not just the technical implementation. When appropriate, think slightly beyond the most obvious implementation path and bring in useful product or UX considerations. If the work is primarily backend or infrastructure and broader user impact is not relevant, stay grounded in the technical context.
 
