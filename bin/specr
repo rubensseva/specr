@@ -649,6 +649,9 @@ specr_create() {
   local spec_tool="codex"
   if [[ "$use_claude" == true ]]; then
     spec_tool="claude"
+  elif ! command -v codex >/dev/null 2>&1; then
+    echo "codex not found, falling back to claude"
+    spec_tool="claude"
   fi
 
   require_cmd "$spec_tool"
