@@ -265,9 +265,9 @@ Constraints:
 - Only ONE top-level task per iteration.
 - Do not reorder or rewrite the task list.
 - Stay focused on implementation — no questions, no waiting for input.
-- CRITICAL: Always update the spec before exiting. Unchecked completed work will be repeated.
-- Note any problems at the end (permission denials, tool errors, retries) so the next iteration is aware.
-- Output a short summary of the progress in the spec — how many tasks are done and how many remain. Keep it short.
+- IMPORTANT: Always update the spec before exiting.
+
+After completing the task, output a short paragraph summarizing what you did, which files you changed, any problems you hit, and how many tasks are done in total, and how many remain.
 RALPH_EOF
 
   local ITER=0
