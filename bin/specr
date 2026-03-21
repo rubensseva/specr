@@ -408,6 +408,7 @@ Task list requirements:
 - Reflect dependencies and ordering where relevant.
 - Optimized for agent-driven implementation: group subtasks under top-level tasks, each an independently committable unit. Scale task count to scope.
 - Tests and docs belong as subtasks under related implementation, not standalone top-level tasks.
+- Do not artificially limit spec size. Tasks are executed one at a time by an automated process with no degradation from list length — a 50-task spec runs as reliably as a 5-task spec. Correctness, completeness, and well-structured grouping matter; brevity for its own sake does not.
 
 Think aloud as you work.
 SPECCER_EOF
@@ -685,6 +686,7 @@ Task list requirements:
 - Reflect dependencies and ordering where relevant.
 - Optimized for agent-driven implementation: group subtasks under top-level tasks, each an independently committable unit. Scale task count to scope.
 - Tests and docs belong as subtasks under related implementation, not standalone top-level tasks.
+- Do not artificially limit spec size. Tasks are executed one at a time by an automated process with no degradation from list length — a 50-task spec runs as reliably as a 5-task spec. Correctness, completeness, and well-structured grouping matter; brevity for its own sake does not.
 
 Consider end-user impact, not just technical implementation. Bring in product/UX considerations when appropriate. For purely backend/infrastructure work, stay grounded in technical context.
 
