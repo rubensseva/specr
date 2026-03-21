@@ -267,7 +267,7 @@ Constraints:
 - Stay focused on implementation — no questions, no waiting for input.
 - CRITICAL: Always update the spec before exiting. Unchecked completed work will be repeated.
 - Note any problems at the end (permission denials, tool errors, retries) so the next iteration is aware.
-- Output a short summary of the progress in the spec in general — how many main tasks are done and how many remain, in total. Keep it short.
+- Output a short summary of the progress in the spec — how many tasks are done and how many remain. Keep it short.
 RALPH_EOF
 
   local ITER=0
@@ -289,7 +289,7 @@ RALPH_EOF
     total_tasks=$(grep -c '^- \[.\]' "$SPEC_PATH" 2>/dev/null) || total_tasks=0
     done_tasks=$(grep -c '^- \[x\]' "$SPEC_PATH" 2>/dev/null) || done_tasks=0
 
-    echo "━━━ Ralph iteration ${ITER}/${max_iter} · ${done_tasks}/${total_tasks} top-level checkboxes ticked ━━━"
+    echo "━━━ Ralph iteration ${ITER}/${max_iter} · ${done_tasks}/${total_tasks} tasks done ━━━"
 
     # After first iteration starts, work may have been done — don't restore to ready/
     trap - EXIT
