@@ -202,6 +202,32 @@ GENERIC_PREFLIGHT_EOF
   fi
 }
 
+IFS= read -r -d '' RALPH_CLEANUP_PROMPT <<'CLEANUP_EOF' || true
+Clean up the git working tree after a specr ralph run.
+
+Instructions:
+
+1. Run `git status` to check for any unstaged changes related to .specr/ files (deleted, modified, or untracked).
+2. If there are .specr/ changes (e.g. a deleted in-progress spec, a new completed spec):
+   - Stage all .specr/ changes (`git add` the relevant paths).
+   - Commit with message: "specr: clean up spec lifecycle files"
+3. If the working tree is already clean with respect to .specr/ files, do nothing.
+
+Constraints:
+- Only touch .specr/ files. Do not stage or modify anything else.
+- Do not push.
+CLEANUP_EOF
+
+ralph_cleanup() {
+  echo ""
+  echo "━━━ Cleaning up .specr/ files… ━━━"
+  claude --print --model sonnet --effort low \
+    --allowedTools "Read Bash Glob Grep" \
+    --disallowedTools "Bash(git push *)" \
+    --append-system-prompt "${RALPH_CLEANUP_PROMPT}" \
+    "Clean up any .specr/ changes in the git working tree." 2>/dev/null || true
+}
+
 specr_ralph() {
   require_cmd claude
   ensure_state_dirs
@@ -329,6 +355,7 @@ RALPH_EOF
       echo "━━━ Ralph finished after ${ITER} iteration(s). ━━━"
       mv "${SPEC_PATH}" "${SPEC_DIR}/completed/${spec_basename}"
       echo "Moved ${spec_basename} → completed/"
+      ralph_cleanup
       exit 0
     fi
 
