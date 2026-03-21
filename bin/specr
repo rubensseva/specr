@@ -274,18 +274,20 @@ RALPH_EOF
 
   # Count top-level task progress (non-indented checkboxes)
   local total_tasks done_tasks
-  total_tasks=$(grep -c '^- \[.\]' "$SPEC_PATH" 2>/dev/null || echo 0)
-  done_tasks=$(grep -c '^- \[x\]' "$SPEC_PATH" 2>/dev/null || echo 0)
+  total_tasks=$(grep -c '^- \[.\]' "$SPEC_PATH" 2>/dev/null) || total_tasks=0
+  done_tasks=$(grep -c '^- \[x\]' "$SPEC_PATH" 2>/dev/null) || done_tasks=0
 
-  echo "Starting ralph loop for: ${spec_basename} (max ${max_iter} iterations) · ${done_tasks}/${total_tasks} tasks done"
+  echo "Starting ralph loop"
+  echo "  Spec: ${spec_basename}"
+  echo "  Progress: ${done_tasks}/${total_tasks} tasks done · max ${max_iter} iterations"
   echo ""
 
   while [[ $ITER -lt $max_iter ]]; do
     ITER=$((ITER + 1))
 
     # Refresh task progress
-    total_tasks=$(grep -c '^- \[.\]' "$SPEC_PATH" 2>/dev/null || echo 0)
-    done_tasks=$(grep -c '^- \[x\]' "$SPEC_PATH" 2>/dev/null || echo 0)
+    total_tasks=$(grep -c '^- \[.\]' "$SPEC_PATH" 2>/dev/null) || total_tasks=0
+    done_tasks=$(grep -c '^- \[x\]' "$SPEC_PATH" 2>/dev/null) || done_tasks=0
 
     echo "━━━ Ralph iteration ${ITER}/${max_iter} · ${done_tasks}/${total_tasks} top-level checkboxes ticked ━━━"
 
