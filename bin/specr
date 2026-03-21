@@ -415,7 +415,7 @@ Spec requirements — must be implementable and include:
 The spec must be self-contained — implementable without prior context.
 
 Task list requirements:
-- Use `- [ ]` Markdown checklists for progress tracking.
+- Use `- [ ]` Markdown checklists for progress tracking. Top-level tasks are unindented, subtasks are indented beneath their parent.
 - Complete: all tasks done = feature fully implemented.
 - Concrete and implementation-oriented.
 - Reflect dependencies and ordering where relevant.
@@ -693,7 +693,7 @@ Spec requirements — must be implementable and include:
 The spec must be self-contained — understandable without prior context from this conversation.
 
 Task list requirements:
-- Use `- [ ]` Markdown checklists for progress tracking.
+- Use `- [ ]` Markdown checklists for progress tracking. Top-level tasks are unindented, subtasks are indented beneath their parent.
 - Complete: all tasks done = feature fully implemented.
 - Concrete and implementation-oriented.
 - Reflect dependencies and ordering where relevant.
