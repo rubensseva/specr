@@ -289,7 +289,7 @@ RALPH_EOF
     total_tasks=$(grep -c '^- \[.\]' "$SPEC_PATH" 2>/dev/null) || total_tasks=0
     done_tasks=$(grep -c '^- \[x\]' "$SPEC_PATH" 2>/dev/null) || done_tasks=0
 
-    echo "━━━ Ralph iteration ${ITER}/${max_iter} · ${done_tasks}/${total_tasks} tasks done ━━━"
+    echo "━━━ ${done_tasks}/${total_tasks} tasks done · ralph iteration ${ITER} (max ${max_iter}) ━━━"
 
     # After first iteration starts, work may have been done — don't restore to ready/
     trap - EXIT
