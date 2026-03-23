@@ -335,6 +335,34 @@ Other:
   specr sync [--dry-run]                 AI-verified sync of spec state folders
   specr update                           Update specr to the latest version
   specr --version                        Show version
+
+Configuration:
+  specr uses two agent tiers:
+    major  — spec authoring (specr "idea", specr auto speccer)
+    minor  — everything else (ralph, preflight, auto reviewer, sync)
+
+  Built-in defaults:
+    major: codex  + gpt-5.4         (high reasoning)
+    minor: claude + claude-sonnet-4-6
+
+  Supported providers: codex, claude, cursor (Cursor Agent CLI — beta)
+
+  Config files (KEY=value, # comments, blank lines ignored):
+    User:    ${XDG_CONFIG_HOME:-~/.config}/specr/config
+    Project: .specr/config
+
+  Keys: major.provider  major.model  major.reasoning
+        minor.provider  minor.model  minor.reasoning
+        codex.cmd  claude.cmd  cursor.cmd
+
+  Environment variables (override config files):
+    SPECR_MAJOR_PROVIDER   SPECR_MAJOR_MODEL   SPECR_MAJOR_REASONING
+    SPECR_MINOR_PROVIDER   SPECR_MINOR_MODEL   SPECR_MINOR_REASONING
+    SPECR_CODEX_CMD  SPECR_CLAUDE_CMD  SPECR_CURSOR_CMD
+
+  Example — use Cursor for spec creation:
+    export SPECR_MAJOR_PROVIDER=cursor
+    export SPECR_MAJOR_MODEL=claude-sonnet-4-6
 EOF
 }
 

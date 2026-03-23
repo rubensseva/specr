@@ -18,18 +18,35 @@ missing=()
 if ! command -v git >/dev/null 2>&1; then
   missing+=("git")
 fi
-if ! command -v claude >/dev/null 2>&1; then
-  warn "claude CLI not found — specr requires it at runtime"
-  warn "Install it before using specr: https://docs.anthropic.com/en/docs/claude-code"
-else
-  ok "claude CLI found"
-fi
 
 if [[ ${#missing[@]} -gt 0 ]]; then
   err "Missing required tools: ${missing[*]}"
   exit 1
 fi
 ok "git found"
+
+# Check provider availability — at least one supported provider should be present
+providers_found=()
+if command -v codex  >/dev/null 2>&1; then providers_found+=("codex");  ok "codex found (major-tier default)"; fi
+if command -v claude >/dev/null 2>&1; then providers_found+=("claude"); ok "claude found (minor-tier default)"; fi
+if command -v agent  >/dev/null 2>&1; then providers_found+=("cursor"); ok "agent found (Cursor provider)"; fi
+
+if [[ ${#providers_found[@]} -eq 0 ]]; then
+  warn "No supported agent provider found."
+  warn "Install at least one of: codex, claude, or the Cursor agent CLI."
+  warn "  codex:  https://github.com/openai/codex"
+  warn "  claude: https://docs.anthropic.com/en/docs/claude-code"
+  warn "  cursor: https://cursor.com/blog/cli"
+else
+  if ! command -v codex  >/dev/null 2>&1; then
+    warn "codex not found — default major-tier provider unavailable"
+    warn "Set SPECR_MAJOR_PROVIDER=claude or SPECR_MAJOR_PROVIDER=cursor to override"
+  fi
+  if ! command -v claude >/dev/null 2>&1; then
+    warn "claude not found — default minor-tier provider unavailable"
+    warn "Set SPECR_MINOR_PROVIDER=codex or SPECR_MINOR_PROVIDER=cursor to override"
+  fi
+fi
 
 # Clone or update
 if [[ -d "$INSTALL_DIR" ]]; then
@@ -81,4 +98,4 @@ echo "Tip: add .specr to your global gitignore so it's ignored in every project:
 echo '     echo ".specr" >> "$(git config --global core.excludesfile || echo ~/.gitignore)" && git config --global core.excludesfile "$(git config --global core.excludesfile || echo ~/.gitignore)"'
 echo ""
 echo "Tip: before your first 'specr ralph', run 'specr preflight' in your project"
-echo "     to verify Claude has the tools and environment access it needs."
+echo "     to verify the configured agent has the tools and environment access it needs."
