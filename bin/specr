@@ -360,9 +360,29 @@ Configuration:
     SPECR_MINOR_PROVIDER   SPECR_MINOR_MODEL   SPECR_MINOR_REASONING
     SPECR_CODEX_CMD  SPECR_CLAUDE_CMD  SPECR_CURSOR_CMD
 
-  Example — use Cursor for spec creation:
-    export SPECR_MAJOR_PROVIDER=cursor
-    export SPECR_MAJOR_MODEL=claude-sonnet-4-6
+  Examples:
+    # Use Claude for everything (both tiers):
+    SPECR_MAJOR_PROVIDER=claude SPECR_MAJOR_MODEL=claude-opus-4-6 specr "my feature idea"
+
+    # Use Cursor Agent for spec creation, Codex for implementation:
+    SPECR_MAJOR_PROVIDER=cursor SPECR_MAJOR_MODEL=claude-sonnet-4-6 \
+    SPECR_MINOR_PROVIDER=codex  SPECR_MINOR_MODEL=o3                specr ralph
+
+    # One-off override — use a specific model for ralph:
+    SPECR_MINOR_MODEL=claude-opus-4-6 specr ralph my-spec.md
+
+    # Run ralph with Cursor Agent CLI and Composer 2:
+    SPECR_MINOR_PROVIDER=cursor SPECR_MINOR_MODEL=cursor-composer-2 specr ralph
+
+    # Use Codex with high reasoning for both tiers:
+    SPECR_MAJOR_MODEL=o3 SPECR_MAJOR_REASONING=high \
+    SPECR_MINOR_PROVIDER=codex SPECR_MINOR_MODEL=o3  specr auto "idea"
+
+    # Or set defaults in ~/.config/specr/config:
+    #   major.provider = claude
+    #   major.model    = claude-opus-4-6
+    #   minor.provider = claude
+    #   minor.model    = claude-sonnet-4-6
 EOF
 }
 
@@ -771,6 +791,7 @@ Task list requirements:
 - Reflect dependencies and ordering where relevant.
 - Optimized for agent-driven implementation: group subtasks under top-level tasks, each an independently committable unit. Scale task count to scope.
 - Tests and docs belong as subtasks under related implementation, not standalone top-level tasks.
+- Only include test subtasks when they provide clear value relative to the effort — e.g., verifying tricky logic, integration boundaries, or behavior that is easy to break. Do not include tests for straightforward glue code, simple config, or obvious wiring where the implementation itself is the proof. When in doubt, leave tests out; the user can request them explicitly.
 - Do not artificially limit spec size. Tasks are executed one at a time by an automated process with no degradation from list length — a 50-task spec runs as reliably as a 5-task spec. Correctness, completeness, and well-structured grouping matter; brevity for its own sake does not.
 
 Think aloud as you work.
@@ -1031,6 +1052,7 @@ Task list requirements:
 - Reflect dependencies and ordering where relevant.
 - Optimized for agent-driven implementation: group subtasks under top-level tasks, each an independently committable unit. Scale task count to scope.
 - Tests and docs belong as subtasks under related implementation, not standalone top-level tasks.
+- Only include test subtasks when they provide clear value relative to the effort — e.g., verifying tricky logic, integration boundaries, or behavior that is easy to break. Do not include tests for straightforward glue code, simple config, or obvious wiring where the implementation itself is the proof. When in doubt, leave tests out; the user can request them explicitly.
 - Do not artificially limit spec size. Tasks are executed one at a time by an automated process with no degradation from list length — a 50-task spec runs as reliably as a 5-task spec. Correctness, completeness, and well-structured grouping matter; brevity for its own sake does not.
 
 Consider end-user impact, not just technical implementation. Bring in product/UX considerations when appropriate. For purely backend/infrastructure work, stay grounded in technical context.
