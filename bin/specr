@@ -176,7 +176,7 @@ compose_prompt_for_provider() {
   fi
 }
 
-# Maps a role name to Claude tool flags.
+# Maps a role name to tool flags for the Claude adapter.
 # Sets globals: _ROLE_ALLOWED_TOOLS, _ROLE_DISALLOWED_TOOLS, _ROLE_EFFORT
 _resolve_claude_role_flags() {
   _ROLE_ALLOWED_TOOLS=""
@@ -321,12 +321,12 @@ usage() {
 specr — spec-driven feature development
 
 Usage:
-  specr "rough feature idea"         Create a spec interactively (Claude researches, interviews, writes)
+  specr "rough feature idea"         Create a spec interactively (major-tier agent researches, interviews, writes)
   specr list                         List all specs by lifecycle state
   specr ralph [-n N] [spec-file]     Implement a ready spec — automated loop, one task at a time
 
 Options:
-  specr --claude "idea"              Use Claude instead of Codex for spec creation
+  specr --claude "idea"              Use Claude as the major-tier agent for spec creation (compatibility override)
   specr ralph -n 10                  Set max iterations (default: 20)
 
 Other:
@@ -348,7 +348,7 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "Error: $1 is not installed or not on PATH." >&2; exit 1; }
 }
 
-claude_text_error_reason() {
+agent_text_error_reason() {
   local output="${1:-}"
   local normalized
   normalized="$(printf '%s' "$output" | tr '[:upper:]' '[:lower:]')"
@@ -632,16 +632,16 @@ RALPH_EOF
     if [[ $agent_exit -ne 0 ]]; then
       [[ -n "$OUTPUT" ]] && echo "$OUTPUT"
       [[ -n "$OUTPUT" ]] && echo ""
-      echo "━━━ Ralph stopped because Claude exited with status ${agent_exit}. Spec remains in-progress. ━━━"
+      echo "━━━ Ralph stopped because the agent exited with status ${agent_exit}. Spec remains in-progress. ━━━"
       exit "$agent_exit"
     fi
 
     echo "$OUTPUT"
     echo ""
 
-    local claude_error_reason=""
-    if claude_error_reason="$(claude_text_error_reason "$OUTPUT")"; then
-      echo "━━━ Ralph stopped because Claude reported a ${claude_error_reason}. Spec remains in-progress. ━━━"
+    local agent_error_reason=""
+    if agent_error_reason="$(agent_text_error_reason "$OUTPUT")"; then
+      echo "━━━ Ralph stopped because the agent reported a ${agent_error_reason}. Spec remains in-progress. ━━━"
       exit 3
     fi
 
