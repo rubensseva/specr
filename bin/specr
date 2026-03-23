@@ -406,7 +406,7 @@ Configuration:
     SPECR_MINOR_MODEL=claude-opus-4-6 specr ralph my-spec.md
 
     # Run ralph with Cursor Agent CLI and Composer 2:
-    SPECR_MINOR_PROVIDER=cursor SPECR_MINOR_MODEL=cursor-composer-2 specr ralph
+    SPECR_MINOR_PROVIDER=cursor SPECR_MINOR_MODEL=composer-2-fast specr ralph
 
     # Use Codex with high reasoning for both tiers:
     SPECR_MAJOR_MODEL=o3 SPECR_MAJOR_REASONING=high \
