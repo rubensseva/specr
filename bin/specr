@@ -269,7 +269,7 @@ run_agent_interactive() {
       if [[ -n "$system_prompt" ]]; then
         args+=("-c" "developer_instructions=$(printf '%s' "$system_prompt")")
       fi
-      [[ "$reasoning" == "high" ]] && args+=("-c" "model.reasoning_effort=high")
+      [[ "$reasoning" == "high" ]] && args+=("-c" "model_reasoning_effort=high")
       args+=("--search")
       _print_run_info "$provider" "$model" "$cmd" "${args[@]}" "$user_prompt"
       exec "$cmd" "${args[@]}" "$user_prompt"
@@ -326,7 +326,7 @@ run_agent_headless() {
       if [[ -n "$system_prompt" ]]; then
         args+=("-c" "developer_instructions=$(printf '%s' "$system_prompt")")
       fi
-      [[ "$reasoning" == "high" ]] && args+=("-c" "model.reasoning_effort=high")
+      [[ "$reasoning" == "high" ]] && args+=("-c" "model_reasoning_effort=high")
       args+=("--output-last-message" "$tmp_out")
       args+=("$user_prompt")
       _print_run_info "$provider" "$model" "$cmd" "${args[@]}"
