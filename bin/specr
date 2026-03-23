@@ -433,7 +433,6 @@ specr_list() {
 }
 
 specr_preflight() {
-  require_cmd claude
   ensure_state_dirs
 
   # If a spec argument is given, or a spec exists in ready/, run spec-specific preflight.
@@ -450,7 +449,7 @@ specr_preflight() {
     spec_basename="$(basename "$spec_file")"
 
     IFS= read -r -d '' PREFLIGHT_PROMPT <<'PREFLIGHT_EOF' || true
-Preflight check for a spec to be implemented by Ralph — an automated loop using `claude --print --model sonnet` that implements one top-level task per iteration, commits, and repeats. Non-interactive.
+Preflight check for a spec to be implemented by the configured implementation agent — an automated loop that implements one top-level task per iteration, commits, and repeats. Non-interactive.
 
 Read-only — do not modify files or implement anything.
 
@@ -473,10 +472,9 @@ PREFLIGHT_EOF
     echo "Running preflight check for: ${spec_basename}"
     echo ""
 
-    claude --print --model sonnet \
-      --allowedTools "Read Bash Glob Grep WebSearch" \
-      --append-system-prompt "${PREFLIGHT_PROMPT}" \
+    run_agent_headless minor preflight "$PREFLIGHT_PROMPT" \
       "Check implementation readiness for the spec: ${spec_file}"
+    [[ -n "$OUTPUT" ]] && echo "$OUTPUT"
   else
     IFS= read -r -d '' GENERIC_PREFLIGHT_PROMPT <<'GENERIC_PREFLIGHT_EOF' || true
 Generic capability check — no spec provided.
@@ -500,10 +498,9 @@ GENERIC_PREFLIGHT_EOF
     echo "Running generic preflight capability check (no spec provided)"
     echo ""
 
-    claude --print --model sonnet \
-      --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
-      --append-system-prompt "${GENERIC_PREFLIGHT_PROMPT}" \
+    run_agent_headless minor preflight_rw "$GENERIC_PREFLIGHT_PROMPT" \
       "Run a generic preflight capability check for specr. Test file creation, editing, reading, git staging/unstaging, cleanup, and web search. Clean up after yourself — leave no trace."
+    [[ -n "$OUTPUT" ]] && echo "$OUTPUT"
   fi
 }
 
@@ -526,15 +523,12 @@ CLEANUP_EOF
 ralph_cleanup() {
   echo ""
   echo "━━━ Cleaning up .specr/ files… ━━━"
-  claude --print --model sonnet --effort low \
-    --allowedTools "Read Bash Glob Grep" \
-    --disallowedTools "Bash(git push *)" \
-    --append-system-prompt "${RALPH_CLEANUP_PROMPT}" \
-    "Clean up any .specr/ changes in the git working tree." 2>/dev/null || true
+  run_agent_headless minor cleanup "$RALPH_CLEANUP_PROMPT" \
+    "Clean up any .specr/ changes in the git working tree." || true
+  [[ -n "$OUTPUT" ]] && echo "$OUTPUT"
 }
 
 specr_ralph() {
-  require_cmd claude
   ensure_state_dirs
 
   local max_iter=20
@@ -625,24 +619,21 @@ RALPH_EOF
     # After first iteration starts, work may have been done — don't restore to ready/
     trap - EXIT
 
-    local claude_exit=0
-    OUTPUT=$(claude --print --model sonnet \
-      --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
-      --disallowedTools "Bash(git push *)" \
-      --append-system-prompt "${RALPH_PROMPT}" \
-      "Implement the next task in the spec: ${SPEC_PATH}") || claude_exit=$?
+    run_agent_headless minor ralph "$RALPH_PROMPT" \
+      "Implement the next task in the spec: ${SPEC_PATH}"
+    local agent_exit=$_AGENT_EXIT
 
-    if [[ $claude_exit -eq 130 || $claude_exit -eq 137 ]]; then
+    if [[ $agent_exit -eq 130 || $agent_exit -eq 137 ]]; then
       echo ""
       echo "━━━ Ralph cancelled by user after ${ITER} iteration(s). Spec remains in-progress. ━━━"
       exit 130
     fi
 
-    if [[ $claude_exit -ne 0 ]]; then
+    if [[ $agent_exit -ne 0 ]]; then
       [[ -n "$OUTPUT" ]] && echo "$OUTPUT"
       [[ -n "$OUTPUT" ]] && echo ""
-      echo "━━━ Ralph stopped because Claude exited with status ${claude_exit}. Spec remains in-progress. ━━━"
-      exit "$claude_exit"
+      echo "━━━ Ralph stopped because Claude exited with status ${agent_exit}. Spec remains in-progress. ━━━"
+      exit "$agent_exit"
     fi
 
     echo "$OUTPUT"
@@ -676,10 +667,7 @@ RALPH_EOF
 }
 
 specr_auto() {
-  require_cmd claude
-
   local max_rounds=5
-  local model="sonnet"
 
   # Parse flags
   while [[ $# -gt 0 ]]; do
@@ -699,7 +687,9 @@ specr_auto() {
           echo "Error: --model requires a model argument." >&2
           exit 1
         fi
-        model="$1"
+        # Backward-compat: override model for both tiers for this run
+        _CFG_MAJOR_MODEL="$1"
+        _CFG_MINOR_MODEL="$1"
         shift
         ;;
       *)
@@ -794,16 +784,14 @@ REVIEWER_EOF
 
   # Round 1: Initial spec creation
   echo "━━━ Round ${ROUND}/${MAX_ROUNDS}: Creating initial spec ━━━"
-  local claude_exit=0
-  SPECCER_OUTPUT=$(claude --print --model "$model" \
-    --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
-    --disallowedTools "Bash(git push *)" \
-    --append-system-prompt "${AUTO_SPECCER_PROMPT}" \
+  run_agent_headless major speccer "$AUTO_SPECCER_PROMPT" \
     "Rough feature idea: ${rough_idea}
 
-Research the codebase and create the spec file at: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md") || claude_exit=$?
+Research the codebase and create the spec file at: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md"
+  local speccer_exit=$_AGENT_EXIT
+  SPECCER_OUTPUT="$OUTPUT"
 
-  if [[ $claude_exit -eq 130 || $claude_exit -eq 137 ]]; then
+  if [[ $speccer_exit -eq 130 || $speccer_exit -eq 137 ]]; then
     echo ""
     echo "━━━ Auto spec cancelled by user. Spec remains in draft (if created). ━━━"
     exit 130
@@ -820,7 +808,6 @@ Research the codebase and create the spec file at: ${SPEC_PATH_PREFIX}-<short-de
 
     # Review phase
     echo "━━━ Round ${ROUND}/${MAX_ROUNDS}: Reviewing ━━━"
-    local reviewer_exit=0
     local REVIEWER_OUTPUT
     local spec_context
     if [[ -n "$SPEC_PATH" ]]; then
@@ -829,15 +816,15 @@ Research the codebase and create the spec file at: ${SPEC_PATH_PREFIX}-<short-de
       spec_context="No spec file found yet at prefix: ${SPEC_PATH_PREFIX}-*.md"
     fi
 
-    REVIEWER_OUTPUT=$(claude --print --model "$model" \
-      --allowedTools "Read Glob Grep WebSearch" \
-      --append-system-prompt "${AUTO_REVIEWER_PROMPT}" \
+    run_agent_headless minor reviewer "$AUTO_REVIEWER_PROMPT" \
       "Speccer output this round:
 ${SPECCER_OUTPUT}
 
 ${spec_context}
 
-Review the spec and provide feedback, or output COMPLETED if the spec is ready.") || reviewer_exit=$?
+Review the spec and provide feedback, or output COMPLETED if the spec is ready."
+    local reviewer_exit=$_AGENT_EXIT
+    REVIEWER_OUTPUT="$OUTPUT"
 
     if [[ $reviewer_exit -eq 130 || $reviewer_exit -eq 137 ]]; then
       echo ""
@@ -874,7 +861,6 @@ Review the spec and provide feedback, or output COMPLETED if the spec is ready."
 
     # Refine phase (same round — reviewer gave feedback, speccer incorporates it)
     echo "━━━ Round ${ROUND}/${MAX_ROUNDS}: Refining spec ━━━"
-    local refine_exit=0
     # Rediscover spec path
     SPEC_PATH="$(find_spec_by_prefix "$SPEC_PATH_PREFIX")"
     local spec_path_msg
@@ -884,16 +870,15 @@ Review the spec and provide feedback, or output COMPLETED if the spec is ready."
       spec_path_msg="No spec file found yet. Create it at: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md"
     fi
 
-    SPECCER_OUTPUT=$(claude --print --model "$model" \
-      --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
-      --disallowedTools "Bash(git push *)" \
-      --append-system-prompt "${AUTO_SPECCER_PROMPT}" \
+    run_agent_headless major speccer "$AUTO_SPECCER_PROMPT" \
       "${spec_path_msg}
 
 Reviewer feedback:
 ${REVIEWER_OUTPUT}
 
-Read the current spec file (if it exists), incorporate the feedback above, and update the spec.") || refine_exit=$?
+Read the current spec file (if it exists), incorporate the feedback above, and update the spec."
+    local refine_exit=$_AGENT_EXIT
+    SPECCER_OUTPUT="$OUTPUT"
 
     if [[ $refine_exit -eq 130 || $refine_exit -eq 137 ]]; then
       echo ""
@@ -910,8 +895,6 @@ Read the current spec file (if it exists), incorporate the feedback above, and u
 }
 
 specr_sync() {
-  require_cmd claude
-
   ensure_state_dirs
 
   local dry_run=false
@@ -954,29 +937,18 @@ SYNC_EOF
   fi
   echo ""
 
-  claude --print --model sonnet \
-    --allowedTools "Read Edit Write Bash Glob Grep WebSearch" \
-    --disallowedTools "Bash(git push *)" \
-    --append-system-prompt "${SYNC_PROMPT}" \
-    "${user_prompt}"
+  run_agent_headless minor sync "$SYNC_PROMPT" "${user_prompt}"
+  [[ -n "$OUTPUT" ]] && echo "$OUTPUT"
 }
 
 specr_create() {
-  local use_claude=false
   if [[ ${1:-} == "--claude" ]]; then
-    use_claude=true
     shift
+    # Backward-compat: use claude for spec creation (mirrors minor tier config)
+    _CFG_MAJOR_PROVIDER="claude"
+    _CFG_MAJOR_MODEL="$_CFG_MINOR_MODEL"
+    _CFG_MAJOR_REASONING=""
   fi
-
-  local spec_tool="codex"
-  if [[ "$use_claude" == true ]]; then
-    spec_tool="claude"
-  elif ! command -v codex >/dev/null 2>&1; then
-    echo "codex not found, falling back to claude"
-    spec_tool="claude"
-  fi
-
-  require_cmd "$spec_tool"
 
   local ROUGH_IDEA="$*"
   local STAMP
@@ -1042,7 +1014,7 @@ Guiding toward ready
 Resolve all open questions before moving to ready — research first, ask the user only when research can't answer. Once the spec is complete (all sections filled, task list solid, acceptance criteria clear), move it to ready/ yourself. Do not ask permission. Then tell the user:
 - The spec is ready.
 - How to implement: "Run `specr ralph` to start implementation."
-- Only for small specs (1–2 main tasks): mention they can run `claude "implement the spec at <path>"` directly. For 3+ tasks, recommend `specr ralph` only.
+- Only for small specs (1–2 main tasks): mention they can run the agent directly. For 3+ tasks, recommend `specr ralph` only.
 
 Mention the spec state (folder and path) after creating it, after state changes, and when asked.
 CREATE_EOF
@@ -1053,14 +1025,10 @@ ${ROUGH_IDEA}
 
 Start Specr mode now."
 
-  echo "Starting Specr in $(pwd) (using ${spec_tool})"
+  echo "Starting Specr in $(pwd) (using $(tier_provider major))"
   echo "Spec file prefix: ${SPEC_PATH_PREFIX}-<short-descriptive-name>.md"
 
-  if [[ "$use_claude" == true ]]; then
-    exec claude --append-system-prompt "${SYSTEM_PROMPT}" "${USER_PROMPT}"
-  else
-    exec codex -c "developer_instructions=$(printf '%s' "${SYSTEM_PROMPT}")" --search "${USER_PROMPT}"
-  fi
+  run_agent_interactive major "$SYSTEM_PROMPT" "$USER_PROMPT"
 }
 
 specr_update() {
