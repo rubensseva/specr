@@ -11,6 +11,111 @@ SPEC_DIR=".specr"
 INSTALL_DIR="${HOME}/.specr-cli"
 STATE_DIRS=("draft" "ready" "in-progress" "completed")
 
+# ─── Agent config ─────────────────────────────────────────────────────────────
+# Built-in defaults (lowest precedence)
+_CFG_MAJOR_PROVIDER="codex"
+_CFG_MAJOR_MODEL="gpt-5.4"
+_CFG_MAJOR_REASONING="high"
+_CFG_MINOR_PROVIDER="claude"
+_CFG_MINOR_MODEL="claude-sonnet-4-6"
+_CFG_MINOR_REASONING=""
+
+# Provider command defaults
+_CFG_CODEX_CMD="codex"
+_CFG_CLAUDE_CMD="claude"
+_CFG_CURSOR_CMD="agent"
+
+# Safe config file parser — never sources the file; no shell execution.
+# Reads KEY=VALUE lines; ignores # comments and blank lines; strips surrounding quotes.
+_load_config_file() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  local lineno=0 line key val
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    lineno=$((lineno + 1))
+    # strip leading/trailing whitespace
+    line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    # skip blank lines and comments
+    [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
+    # must contain '='
+    if [[ "$line" != *=* ]]; then
+      echo "Error: malformed config line (${file}:${lineno}): ${line}" >&2
+      exit 1
+    fi
+    key="${line%%=*}"
+    val="${line#*=}"
+    # strip surrounding single or double quotes from value
+    if [[ "${val:0:1}" == '"' && ${#val} -ge 2 ]]; then
+      local last="${val: -1}"
+      [[ "$last" == '"' ]] && val="${val:1:${#val}-2}"
+    elif [[ "${val:0:1}" == "'" && ${#val} -ge 2 ]]; then
+      local last="${val: -1}"
+      [[ "$last" == "'" ]] && val="${val:1:${#val}-2}"
+    fi
+    case "$key" in
+      major.provider)  _CFG_MAJOR_PROVIDER="$val" ;;
+      major.model)     _CFG_MAJOR_MODEL="$val" ;;
+      major.reasoning) _CFG_MAJOR_REASONING="$val" ;;
+      minor.provider)  _CFG_MINOR_PROVIDER="$val" ;;
+      minor.model)     _CFG_MINOR_MODEL="$val" ;;
+      minor.reasoning) _CFG_MINOR_REASONING="$val" ;;
+      codex.cmd)       _CFG_CODEX_CMD="$val" ;;
+      claude.cmd)      _CFG_CLAUDE_CMD="$val" ;;
+      cursor.cmd)      _CFG_CURSOR_CMD="$val" ;;
+      *)
+        echo "Error: unknown config key '${key}' (${file}:${lineno})" >&2
+        exit 1
+        ;;
+    esac
+  done < "$file"
+}
+
+_validate_agent_config() {
+  local tier provider model
+  for tier in major minor; do
+    if [[ "$tier" == "major" ]]; then
+      provider="$_CFG_MAJOR_PROVIDER"
+      model="$_CFG_MAJOR_MODEL"
+    else
+      provider="$_CFG_MINOR_PROVIDER"
+      model="$_CFG_MINOR_MODEL"
+    fi
+    case "$provider" in
+      codex|claude|cursor) ;;
+      *)
+        echo "Error: unknown provider '${provider}' for ${tier} tier. Valid providers: codex, claude, cursor." >&2
+        exit 1
+        ;;
+    esac
+    if [[ -z "$model" ]]; then
+      echo "Error: model must not be empty for ${tier} tier (provider: ${provider})." >&2
+      exit 1
+    fi
+  done
+}
+
+# Load config with explicit precedence:
+#   built-in defaults < user config < project config < env vars
+_load_agent_config() {
+  local user_cfg="${XDG_CONFIG_HOME:-${HOME}/.config}/specr/config"
+  local project_cfg="${SPEC_DIR}/config"
+  _load_config_file "$user_cfg"
+  _load_config_file "$project_cfg"
+  # Environment variable overrides
+  [[ -n "${SPECR_MAJOR_PROVIDER:-}"  ]] && _CFG_MAJOR_PROVIDER="$SPECR_MAJOR_PROVIDER"
+  [[ -n "${SPECR_MAJOR_MODEL:-}"     ]] && _CFG_MAJOR_MODEL="$SPECR_MAJOR_MODEL"
+  [[ -n "${SPECR_MAJOR_REASONING:-}" ]] && _CFG_MAJOR_REASONING="$SPECR_MAJOR_REASONING"
+  [[ -n "${SPECR_MINOR_PROVIDER:-}"  ]] && _CFG_MINOR_PROVIDER="$SPECR_MINOR_PROVIDER"
+  [[ -n "${SPECR_MINOR_MODEL:-}"     ]] && _CFG_MINOR_MODEL="$SPECR_MINOR_MODEL"
+  [[ -n "${SPECR_MINOR_REASONING:-}" ]] && _CFG_MINOR_REASONING="$SPECR_MINOR_REASONING"
+  # Optional provider command overrides
+  [[ -n "${SPECR_CODEX_CMD:-}"  ]] && _CFG_CODEX_CMD="$SPECR_CODEX_CMD"
+  [[ -n "${SPECR_CLAUDE_CMD:-}" ]] && _CFG_CLAUDE_CMD="$SPECR_CLAUDE_CMD"
+  [[ -n "${SPECR_CURSOR_CMD:-}" ]] && _CFG_CURSOR_CMD="$SPECR_CURSOR_CMD"
+  _validate_agent_config
+}
+# ──────────────────────────────────────────────────────────────────────────────
+
 usage() {
   cat <<'EOF'
 specr — spec-driven feature development
@@ -768,6 +873,9 @@ specr_update() {
   git -C "$INSTALL_DIR" pull --ff-only
   echo "Updated to $(git -C "$INSTALL_DIR" log -1 --format='%h %s')"
 }
+
+# Load and validate agent config (built-ins < user config < project config < env vars)
+_load_agent_config
 
 # Argument routing
 if [[ $# -eq 0 ]]; then
