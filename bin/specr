@@ -116,6 +116,206 @@ _load_agent_config() {
 }
 # ──────────────────────────────────────────────────────────────────────────────
 
+# ─── Provider adapter layer ───────────────────────────────────────────────────
+
+# Tier resolution helpers
+tier_provider() {
+  case "${1:?}" in
+    major) echo "$_CFG_MAJOR_PROVIDER" ;;
+    minor) echo "$_CFG_MINOR_PROVIDER" ;;
+    *)     echo "Error: unknown tier '${1}'. Use major or minor." >&2; exit 1 ;;
+  esac
+}
+
+tier_model() {
+  case "${1:?}" in
+    major) echo "$_CFG_MAJOR_MODEL" ;;
+    minor) echo "$_CFG_MINOR_MODEL" ;;
+    *)     echo "Error: unknown tier '${1}'. Use major or minor." >&2; exit 1 ;;
+  esac
+}
+
+tier_reasoning() {
+  case "${1:?}" in
+    major) echo "$_CFG_MAJOR_REASONING" ;;
+    minor) echo "$_CFG_MINOR_REASONING" ;;
+    *)     echo "Error: unknown tier '${1}'. Use major or minor." >&2; exit 1 ;;
+  esac
+}
+
+# Returns the command name/path for a provider
+provider_cmd_for() {
+  case "${1:?}" in
+    codex)  echo "$_CFG_CODEX_CMD" ;;
+    claude) echo "$_CFG_CLAUDE_CMD" ;;
+    cursor) echo "$_CFG_CURSOR_CMD" ;;
+    *)      echo "Error: unknown provider '${1}'." >&2; exit 1 ;;
+  esac
+}
+
+# Exits with an error if the provider command is not found on PATH
+provider_require() {
+  local provider="$1" cmd
+  cmd="$(provider_cmd_for "$provider")"
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "Error: provider '${provider}' requires command '${cmd}', which is not installed or not on PATH." >&2
+    exit 1
+  }
+}
+
+# Produces a composed prompt for providers without a native system-prompt flag.
+# Format: [SPECR SYSTEM INSTRUCTIONS]\n...\n[END SYSTEM INSTRUCTIONS]\n\n[USER TASK]\n...
+compose_prompt_for_provider() {
+  local system_prompt="$1" user_prompt="$2"
+  if [[ -n "$system_prompt" ]]; then
+    printf '%s\n%s\n%s\n\n%s\n%s' \
+      "[SPECR SYSTEM INSTRUCTIONS]" "$system_prompt" "[END SYSTEM INSTRUCTIONS]" \
+      "[USER TASK]" "$user_prompt"
+  else
+    printf '%s' "$user_prompt"
+  fi
+}
+
+# Maps a role name to Claude tool flags.
+# Sets globals: _ROLE_ALLOWED_TOOLS, _ROLE_DISALLOWED_TOOLS, _ROLE_EFFORT
+_resolve_claude_role_flags() {
+  _ROLE_ALLOWED_TOOLS=""
+  _ROLE_DISALLOWED_TOOLS=""
+  _ROLE_EFFORT=""
+  case "${1:?}" in
+    ralph)
+      _ROLE_ALLOWED_TOOLS="Read Edit Write Bash Glob Grep WebSearch"
+      _ROLE_DISALLOWED_TOOLS="Bash(git push *)"
+      ;;
+    cleanup)
+      _ROLE_ALLOWED_TOOLS="Read Bash Glob Grep"
+      _ROLE_DISALLOWED_TOOLS="Bash(git push *)"
+      _ROLE_EFFORT="low"
+      ;;
+    preflight)
+      _ROLE_ALLOWED_TOOLS="Read Bash Glob Grep WebSearch"
+      ;;
+    preflight_rw)
+      _ROLE_ALLOWED_TOOLS="Read Edit Write Bash Glob Grep WebSearch"
+      ;;
+    speccer)
+      _ROLE_ALLOWED_TOOLS="Read Edit Write Bash Glob Grep WebSearch"
+      _ROLE_DISALLOWED_TOOLS="Bash(git push *)"
+      ;;
+    reviewer)
+      _ROLE_ALLOWED_TOOLS="Read Glob Grep WebSearch"
+      ;;
+    sync)
+      _ROLE_ALLOWED_TOOLS="Read Edit Write Bash Glob Grep WebSearch"
+      _ROLE_DISALLOWED_TOOLS="Bash(git push *)"
+      ;;
+    *)
+      echo "Error: unknown role '${1}' for Claude adapter." >&2
+      exit 1
+      ;;
+  esac
+}
+
+# Run an agent interactively for the given tier (exec — replaces current process).
+# Usage: run_agent_interactive <tier> <system_prompt> <user_prompt>
+run_agent_interactive() {
+  local tier="$1" system_prompt="$2" user_prompt="$3"
+  local provider model reasoning cmd
+  provider="$(tier_provider "$tier")"
+  model="$(tier_model "$tier")"
+  reasoning="$(tier_reasoning "$tier")"
+  cmd="$(provider_cmd_for "$provider")"
+  provider_require "$provider"
+
+  case "$provider" in
+    claude)
+      local args=("--model" "$model")
+      [[ -n "$reasoning"     ]] && args+=("--effort" "$reasoning")
+      [[ -n "$system_prompt" ]] && args+=("--append-system-prompt" "$system_prompt")
+      exec "$cmd" "${args[@]}" "$user_prompt"
+      ;;
+    codex)
+      local args=()
+      [[ -n "$model" ]] && args+=("--model" "$model")
+      if [[ -n "$system_prompt" ]]; then
+        args+=("-c" "developer_instructions=$(printf '%s' "$system_prompt")")
+      fi
+      [[ "$reasoning" == "high" ]] && args+=("-c" "model.reasoning_effort=high")
+      args+=("--search")
+      exec "$cmd" "${args[@]}" "$user_prompt"
+      ;;
+    cursor)
+      local composed_prompt
+      composed_prompt="$(compose_prompt_for_provider "$system_prompt" "$user_prompt")"
+      local args=()
+      [[ -n "$model" ]] && args+=("--model" "$model")
+      exec "$cmd" "${args[@]}" "$composed_prompt"
+      ;;
+  esac
+}
+
+# Run an agent headlessly and capture output.
+# Usage: run_agent_headless <tier> <role> <system_prompt> <user_prompt>
+# Sets globals: OUTPUT (captured text), _AGENT_EXIT (exit code)
+run_agent_headless() {
+  local tier="$1" role="$2" system_prompt="$3" user_prompt="$4"
+  local provider model reasoning cmd
+  provider="$(tier_provider "$tier")"
+  model="$(tier_model "$tier")"
+  reasoning="$(tier_reasoning "$tier")"
+  cmd="$(provider_cmd_for "$provider")"
+  provider_require "$provider"
+
+  OUTPUT=""
+  _AGENT_EXIT=0
+
+  case "$provider" in
+    claude)
+      _resolve_claude_role_flags "$role"
+      local args=("--print" "--model" "$model")
+      # Role effort (e.g. cleanup=low) takes priority; fall back to tier reasoning
+      if [[ -n "$_ROLE_EFFORT" ]]; then
+        args+=("--effort" "$_ROLE_EFFORT")
+      elif [[ -n "$reasoning" ]]; then
+        args+=("--effort" "$reasoning")
+      fi
+      [[ -n "$_ROLE_ALLOWED_TOOLS"    ]] && args+=("--allowedTools"    "$_ROLE_ALLOWED_TOOLS")
+      [[ -n "$_ROLE_DISALLOWED_TOOLS" ]] && args+=("--disallowedTools" "$_ROLE_DISALLOWED_TOOLS")
+      [[ -n "$system_prompt"          ]] && args+=("--append-system-prompt" "$system_prompt")
+      OUTPUT=$("$cmd" "${args[@]}" "$user_prompt") || _AGENT_EXIT=$?
+      ;;
+    codex)
+      # codex exec writes final assistant message to a temp file; stdout is progress noise
+      local tmp_out
+      tmp_out="$(mktemp)"
+      local args=("exec")
+      [[ -n "$model" ]] && args+=("--model" "$model")
+      args+=("-C" "$(pwd)")
+      if [[ -n "$system_prompt" ]]; then
+        args+=("-c" "developer_instructions=$(printf '%s' "$system_prompt")")
+      fi
+      [[ "$reasoning" == "high" ]] && args+=("-c" "model.reasoning_effort=high")
+      args+=("--output-last-message" "$tmp_out")
+      args+=("$user_prompt")
+      "$cmd" "${args[@]}" || _AGENT_EXIT=$?
+      OUTPUT="$(cat "$tmp_out" 2>/dev/null || echo "")"
+      rm -f "$tmp_out"
+      ;;
+    cursor)
+      local composed_prompt
+      composed_prompt="$(compose_prompt_for_provider "$system_prompt" "$user_prompt")"
+      local args=("--print" "--output-format" "text" "--workspace" "$(pwd)" "--trust")
+      [[ -n "$model" ]] && args+=("--model" "$model")
+      # Roles that perform write/command execution get --yolo for autonomous operation
+      case "$role" in
+        ralph|speccer|sync|cleanup) args+=("--yolo") ;;
+      esac
+      OUTPUT=$("$cmd" "${args[@]}" "$composed_prompt") || _AGENT_EXIT=$?
+      ;;
+  esac
+}
+# ──────────────────────────────────────────────────────────────────────────────
+
 usage() {
   cat <<'EOF'
 specr — spec-driven feature development
