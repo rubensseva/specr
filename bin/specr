@@ -216,6 +216,34 @@ _resolve_claude_role_flags() {
   esac
 }
 
+# Print harness, model, and full command (without prompt text) before each agent run.
+# Usage: _print_run_info <provider> <model> <cmd> <args...>
+# The last element of args is assumed to be the prompt and is replaced with "<prompt>".
+_print_run_info() {
+  local provider="$1" model="$2" cmd="$3"
+  shift 3
+  local display_args=("$cmd")
+  # Rebuild args, masking prompt-like values (last positional arg and prompt flag values)
+  local skip_next=false
+  for arg in "$@"; do
+    if [[ "$skip_next" == true ]]; then
+      display_args+=("<…>")
+      skip_next=false
+      continue
+    fi
+    case "$arg" in
+      --append-system-prompt|-c) display_args+=("$arg"); skip_next=true ;;
+      *) display_args+=("$arg") ;;
+    esac
+  done
+  # Replace the last arg (user prompt) with <prompt>
+  local last_idx=$(( ${#display_args[@]} - 1 ))
+  if [[ $last_idx -gt 0 ]]; then
+    display_args[$last_idx]="<prompt>"
+  fi
+  printf '\033[2m%s | %s\n%s\033[0m\n' "$provider" "$model" "${display_args[*]}" >&2
+}
+
 # Run an agent interactively for the given tier (exec — replaces current process).
 # Usage: run_agent_interactive <tier> <system_prompt> <user_prompt>
 run_agent_interactive() {
@@ -232,6 +260,7 @@ run_agent_interactive() {
       local args=("--model" "$model")
       [[ -n "$reasoning"     ]] && args+=("--effort" "$reasoning")
       [[ -n "$system_prompt" ]] && args+=("--append-system-prompt" "$system_prompt")
+      _print_run_info "$provider" "$model" "$cmd" "${args[@]}" "$user_prompt"
       exec "$cmd" "${args[@]}" "$user_prompt"
       ;;
     codex)
@@ -242,6 +271,7 @@ run_agent_interactive() {
       fi
       [[ "$reasoning" == "high" ]] && args+=("-c" "model.reasoning_effort=high")
       args+=("--search")
+      _print_run_info "$provider" "$model" "$cmd" "${args[@]}" "$user_prompt"
       exec "$cmd" "${args[@]}" "$user_prompt"
       ;;
     cursor)
@@ -249,6 +279,7 @@ run_agent_interactive() {
       composed_prompt="$(compose_prompt_for_provider "$system_prompt" "$user_prompt")"
       local args=()
       [[ -n "$model" ]] && args+=("--model" "$model")
+      _print_run_info "$provider" "$model" "$cmd" "${args[@]}" "$composed_prompt"
       exec "$cmd" "${args[@]}" "$composed_prompt"
       ;;
   esac
@@ -282,6 +313,7 @@ run_agent_headless() {
       [[ -n "$_ROLE_ALLOWED_TOOLS"    ]] && args+=("--allowedTools"    "$_ROLE_ALLOWED_TOOLS")
       [[ -n "$_ROLE_DISALLOWED_TOOLS" ]] && args+=("--disallowedTools" "$_ROLE_DISALLOWED_TOOLS")
       [[ -n "$system_prompt"          ]] && args+=("--append-system-prompt" "$system_prompt")
+      _print_run_info "$provider" "$model" "$cmd" "${args[@]}" "$user_prompt"
       OUTPUT=$("$cmd" "${args[@]}" "$user_prompt") || _AGENT_EXIT=$?
       ;;
     codex)
@@ -297,6 +329,7 @@ run_agent_headless() {
       [[ "$reasoning" == "high" ]] && args+=("-c" "model.reasoning_effort=high")
       args+=("--output-last-message" "$tmp_out")
       args+=("$user_prompt")
+      _print_run_info "$provider" "$model" "$cmd" "${args[@]}"
       "$cmd" "${args[@]}" || _AGENT_EXIT=$?
       OUTPUT="$(cat "$tmp_out" 2>/dev/null || echo "")"
       rm -f "$tmp_out"
@@ -310,6 +343,7 @@ run_agent_headless() {
       case "$role" in
         ralph|speccer|sync|cleanup) args+=("--yolo") ;;
       esac
+      _print_run_info "$provider" "$model" "$cmd" "${args[@]}" "$composed_prompt"
       OUTPUT=$("$cmd" "${args[@]}" "$composed_prompt") || _AGENT_EXIT=$?
       ;;
   esac
