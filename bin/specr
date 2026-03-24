@@ -857,9 +857,16 @@ Each round:
    - Spec is self-contained
 5. Evaluate on its own terms — complete for the scope it chose? Do not expand scope.
 
+Verification pass (mandatory before declaring COMPLETED):
+Before outputting COMPLETED, you MUST do a verification pass:
+1. Re-read the spec file in full.
+2. For each major technical claim or reference in the spec, read the relevant source files and verify they match reality (correct file paths, function names, APIs, data structures, config formats, etc.).
+3. Verify the task list is coherent: tasks reference real code locations, subtasks are feasible given the current codebase, and nothing is based on stale assumptions.
+4. If you find inaccuracies, do NOT output COMPLETED — instead provide concrete feedback about what needs fixing.
+
 Decision:
-- Complete and meets all requirements → output COMPLETED as the very last line.
-- Needs work → provide research findings and concrete feedback. Do NOT output COMPLETED.
+- Verification pass confirms spec is accurate and complete → output COMPLETED as the very last line.
+- Verification finds issues or spec needs work → provide research findings and concrete feedback. Do NOT output COMPLETED.
 REVIEWER_EOF
 
   local MAX_ROUNDS=$max_rounds
@@ -1099,10 +1106,19 @@ Consider end-user impact, not just technical implementation. Bring in product/UX
 
 Be cautious about treating inferred details as final decisions. Verify through research or ask the user. Include sources for important conclusions when useful.
 
+Verification pass (mandatory before moving to ready)
+
+Before moving any spec from draft/ to ready/, you MUST perform a verification pass:
+1. Re-read the spec file in full.
+2. For each major technical claim or reference in the spec, read the relevant source files and verify they match reality (correct file paths, function names, APIs, data structures, config formats, etc.).
+3. Verify the task list is coherent: tasks reference real code locations, subtasks are feasible given the current codebase, and nothing is based on stale assumptions.
+4. If you find inaccuracies, fix them in the spec before proceeding.
+5. Only after this verification pass confirms the spec is accurate and grounded in the actual code should you move it to ready/.
+
 Guiding toward ready
 
-Resolve all open questions before moving to ready — research first, ask the user only when research can't answer. Once the spec is complete (all sections filled, task list solid, acceptance criteria clear), move it to ready/ yourself. Do not ask permission. Then tell the user:
-- The spec is ready.
+Resolve all open questions before moving to ready — research first, ask the user only when research can't answer. Once the spec is complete (all sections filled, task list solid, acceptance criteria clear), run the verification pass above, then move it to ready/ yourself. Do not ask permission. Then tell the user:
+- The spec is ready (verified against codebase).
 - How to implement: "Run `specr ralph` to start implementation."
 - Only for small specs (1–2 main tasks): mention they can run the agent directly. For 3+ tasks, recommend `specr ralph` only.
 
