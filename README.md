@@ -57,6 +57,14 @@ Cursor's headless `agent` CLI is supported as a provider for both spec creation 
 export SPECR_MAJOR_PROVIDER=cursor
 export SPECR_MAJOR_MODEL=claude-sonnet-4-6
 
+# Use Cursor with GPT 5.4 for spec creation
+export SPECR_MAJOR_PROVIDER=cursor
+export SPECR_MAJOR_MODEL=gpt-5.4
+
+# Same but with fast mode (faster output, same model)
+export SPECR_MAJOR_PROVIDER=cursor
+export SPECR_MAJOR_MODEL=gpt-5.4-fast
+
 # Use Cursor for everything
 export SPECR_MAJOR_PROVIDER=cursor
 export SPECR_MINOR_PROVIDER=cursor

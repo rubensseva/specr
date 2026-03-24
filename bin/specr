@@ -13,8 +13,8 @@ STATE_DIRS=("draft" "ready" "in-progress" "completed")
 
 # ─── Agent config ─────────────────────────────────────────────────────────────
 # Built-in defaults (lowest precedence)
-_CFG_MAJOR_PROVIDER="codex"
-_CFG_MAJOR_MODEL="gpt-5.4"
+_CFG_MAJOR_PROVIDER="claude"
+_CFG_MAJOR_MODEL="claude-opus-4-6"
 _CFG_MAJOR_REASONING="high"
 _CFG_MINOR_PROVIDER="claude"
 _CFG_MINOR_MODEL="claude-sonnet-4-6"
@@ -376,7 +376,7 @@ Configuration:
     minor  — everything else (ralph, preflight, auto reviewer, sync)
 
   Built-in defaults:
-    major: codex  + gpt-5.4         (high reasoning)
+    major: claude + claude-opus-4-6  (high effort)
     minor: claude + claude-sonnet-4-6
 
   Supported providers: codex, claude, cursor (Cursor Agent CLI — beta)
@@ -411,6 +411,12 @@ Configuration:
     # Use Codex with high reasoning for both tiers:
     SPECR_MAJOR_MODEL=o3 SPECR_MAJOR_REASONING=high \
     SPECR_MINOR_PROVIDER=codex SPECR_MINOR_MODEL=o3  specr auto "idea"
+
+    # Use Cursor with GPT 5.4 for spec creation:
+    SPECR_MAJOR_PROVIDER=cursor SPECR_MAJOR_MODEL=gpt-5.4 specr "my feature idea"
+
+    # Same but with fast mode (faster output, same model):
+    SPECR_MAJOR_PROVIDER=cursor SPECR_MAJOR_MODEL=gpt-5.4-fast specr "my feature idea"
 
     # Or set defaults in ~/.config/specr/config:
     #   major.provider = claude
