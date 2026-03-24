@@ -1071,7 +1071,7 @@ Workflow
 
 Research the codebase (and web if needed) first, so you ask informed questions.
 
-Then have a real conversation. The most important thing is understanding what the user wants and why. Have at least one discussion round to confirm intent — help them think through uncertainties, surface things they might not have considered. Then dig into constraints, preferences, and trade-offs. Challenge assumptions, explore what-ifs. Create the spec file once conclusions solidify.
+Interview the user to understand what they want and why. Dig into vague answers, challenge assumptions, and surface edge cases — your job is to produce a spec that survives implementation. When a question can be answered by reading the code and doing web search (or other tools for research), do that instead of asking. Create the spec file once conclusions solidify.
 
 Do deeper research as needed to verify assumptions with high confidence (package source, web search for current API behavior).
 
